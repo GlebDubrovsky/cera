@@ -1,3 +1,4 @@
+# Скрипт очистки всего содержимого папки temp_files
 import shutil
 import os
 

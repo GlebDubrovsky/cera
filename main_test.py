@@ -11,12 +11,13 @@ from scripts.link_selection_bar_tags import link_selection_bar_tags
 from scripts.update_cat_menu_vilmed import update_cat_menu_vilmed
 from projects.vilmed.overspam_vilmed import overspam_vilmed
 from html import escape
-from scripts.keywords_search import keywords_search as run_keywords_search
 from scripts.open_list_links import open_links_in_browser
+from xmlriver.web import router as xmlriver_router
 import asyncio
 from concurrent.futures import ThreadPoolExecutor
 
 app = FastAPI()
+app.include_router(xmlriver_router)
 
 # Подключаем шаблоны
 templates = Jinja2Templates(directory="templates")
@@ -174,108 +175,108 @@ async def overspam_htmx(
 
 # ============ ЭНДПОИНТ 4: KEYWORDS SEARCH ============
 
-@app.post("/keywords_search", response_class=HTMLResponse)
-async def keywords_search_htmx(
-    file: UploadFile = File(...),
-    prompt_file: UploadFile = File(...),
-    log_id: str = Form("")
-):
-    # Проверяем расширение файла с таблицей.
-    if not str(file.filename or "").lower().endswith(".xlsx"):
-        return HTMLResponse(
-            '<div class="alert alert-danger">Требуется файл таблицы .xlsx</div>',
-            status_code=400
-        )
+# @app.post("/keywords_search", response_class=HTMLResponse)
+# async def keywords_search_htmx(
+#     file: UploadFile = File(...),
+#     prompt_file: UploadFile = File(...),
+#     log_id: str = Form("")
+# ):
+#     # Проверяем расширение файла с таблицей.
+#     if not str(file.filename or "").lower().endswith(".xlsx"):
+#         return HTMLResponse(
+#             '<div class="alert alert-danger">Требуется файл таблицы .xlsx</div>',
+#             status_code=400
+#         )
 
-    # Проверяем расширение файла с шаблоном промпта.
-    if not str(prompt_file.filename or "").lower().endswith((".txt", ".md")):
-        return HTMLResponse(
-            '<div class="alert alert-danger">Требуется файл шаблона .txt или .md</div>',
-            status_code=400
-        )
+#     # Проверяем расширение файла с шаблоном промпта.
+#     if not str(prompt_file.filename or "").lower().endswith((".txt", ".md")):
+#         return HTMLResponse(
+#             '<div class="alert alert-danger">Требуется файл шаблона .txt или .md</div>',
+#             status_code=400
+#         )
 
-    # Создаём временную папку для запроса.
-    req_id = str(uuid.uuid4())
-    temp_dir = manage_temp_dir(req_id, "create", "keywords_search")
+#     # Создаём временную папку для запроса.
+#     req_id = str(uuid.uuid4())
+#     temp_dir = manage_temp_dir(req_id, "create", "keywords_search")
 
-    try:
-        # Сохраняем загруженные файлы во временную папку.
-        file_path = os.path.join(temp_dir, file.filename)
-        prompt_path = os.path.join(temp_dir, prompt_file.filename)
+#     try:
+#         # Сохраняем загруженные файлы во временную папку.
+#         file_path = os.path.join(temp_dir, file.filename)
+#         prompt_path = os.path.join(temp_dir, prompt_file.filename)
 
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(file.file, f)
+#         with open(file_path, "wb") as f:
+#             shutil.copyfileobj(file.file, f)
 
-        with open(prompt_path, "wb") as f:
-            shutil.copyfileobj(prompt_file.file, f)
+#         with open(prompt_path, "wb") as f:
+#             shutil.copyfileobj(prompt_file.file, f)
 
-        # Запускаем модуль подбора ключевых фраз.
-        res_df = await asyncio.to_thread(
-            run_with_log_capture,
-            log_id,
-            run_keywords_search,
-            file_path,
-            prompt_path
-        )
+#         # Запускаем модуль подбора ключевых фраз.
+#         res_df = await asyncio.to_thread(
+#             run_with_log_capture,
+#             log_id,
+#             run_keywords_search,
+#             file_path,
+#             prompt_path
+#         )
 
-        # Если результат пустой, отдаём ошибку.
-        if res_df is None or res_df.empty:
-            manage_temp_dir(req_id, "delete", "keywords_search")
-            return HTMLResponse(
-                '<div class="alert alert-danger">Ошибка при обработке или результат пуст</div>',
-                status_code=500
-            )
+#         # Если результат пустой, отдаём ошибку.
+#         if res_df is None or res_df.empty:
+#             manage_temp_dir(req_id, "delete", "keywords_search")
+#             return HTMLResponse(
+#                 '<div class="alert alert-danger">Ошибка при обработке или результат пуст</div>',
+#                 status_code=500
+#             )
 
-        # Сохраняем результат в Excel.
-        res_path = os.path.join(temp_dir, "result.xlsx")
-        res_df.to_excel(res_path, index=False)
-    except Exception as exc:
-        manage_temp_dir(req_id, "delete", "keywords_search")
-        return HTMLResponse(
-            f'<div class="alert alert-danger">{escape(str(exc))}</div>',
-            status_code=400
-        )
+#         # Сохраняем результат в Excel.
+#         res_path = os.path.join(temp_dir, "result.xlsx")
+#         res_df.to_excel(res_path, index=False)
+#     except Exception as exc:
+#         manage_temp_dir(req_id, "delete", "keywords_search")
+#         return HTMLResponse(
+#             f'<div class="alert alert-danger">{escape(str(exc))}</div>',
+#             status_code=400
+#         )
 
-    download_url = f"/download/keywords_search/{req_id}"
+#     download_url = f"/download/keywords_search/{req_id}"
 
-    html_response = f"""
-    <div class="alert alert-success d-flex align-items-center" role="alert">
-        <div>
-            Обработка завершена!
-            <a href="{download_url}" class="btn btn-sm btn-success ms-2" download>
-                Скачать результат
-            </a>
-        </div>
-    </div>
-    """
+#     html_response = f"""
+#     <div class="alert alert-success d-flex align-items-center" role="alert">
+#         <div>
+#             Обработка завершена!
+#             <a href="{download_url}" class="btn btn-sm btn-success ms-2" download>
+#                 Скачать результат
+#             </a>
+#         </div>
+#     </div>
+#     """
 
-    return HTMLResponse(content=html_response)
+#     return HTMLResponse(content=html_response)
 
-# Эндпоинт для скачивания keywords_search
-@app.get("/download/keywords_search/{req_id}")
-async def download_keywords_search(req_id: str, background_tasks: BackgroundTasks):
-    # Получаем временную папку запроса.
-    temp_dir = manage_temp_dir(req_id, "get", "keywords_search")
+# # Эндпоинт для скачивания keywords_search
+# @app.get("/download/keywords_search/{req_id}")
+# async def download_keywords_search(req_id: str, background_tasks: BackgroundTasks):
+#     # Получаем временную папку запроса.
+#     temp_dir = manage_temp_dir(req_id, "get", "keywords_search")
 
-    res_path = os.path.join(temp_dir, "result.xlsx")
+#     res_path = os.path.join(temp_dir, "result.xlsx")
 
-    # Если файла нет, значит запрос старый или уже удалён.
-    if not os.path.exists(res_path):
-        raise HTTPException(404, "Файл не найден или срок его хранения истёк")
+#     # Если файла нет, значит запрос старый или уже удалён.
+#     if not os.path.exists(res_path):
+#         raise HTTPException(404, "Файл не найден или срок его хранения истёк")
 
-    # Удаляем временную папку после отдачи файла.
-    background_tasks.add_task(
-        manage_temp_dir,
-        req_id,
-        "delete",
-        "keywords_search"
-    )
+#     # Удаляем временную папку после отдачи файла.
+#     background_tasks.add_task(
+#         manage_temp_dir,
+#         req_id,
+#         "delete",
+#         "keywords_search"
+#     )
 
-    return FileResponse(
-        res_path,
-        filename="result_keywords_search.xlsx",
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
+#     return FileResponse(
+#         res_path,
+#         filename="result_keywords_search.xlsx",
+#         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+#     )
 
 # Эндпоинт для скачивания overspam
 @app.get("/download/overspam/{req_id}")

@@ -141,6 +141,94 @@
             </div>
         </div>
 
+        <!-- Карточка XMLRiver: модули доступны отдельно и могут быть объединены сценариями. -->
+        <div class="card shadow-sm mt-4">
+            <div class="card-header">
+                <h5 class="mb-2">XMLRiver</h5>
+                <ul class="nav nav-tabs card-header-tabs" id="xmlriverTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="xmlriver-frequency-tab" data-bs-toggle="tab"
+                            data-bs-target="#xmlriver-frequency" type="button" role="tab" aria-controls="xmlriver-frequency"
+                            aria-selected="true">Сбор частот</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="xmlriver-popular-tab" data-bs-toggle="tab"
+                            data-bs-target="#xmlriver-popular" type="button" role="tab" aria-controls="xmlriver-popular"
+                            aria-selected="false">Сбор фраз</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="xmlriver-serp-tab" data-bs-toggle="tab"
+                            data-bs-target="#xmlriver-serp" type="button" role="tab" aria-controls="xmlriver-serp"
+                            aria-selected="false">ТОП конкурентов</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="xmlriverTabsContent">
+                    <div class="tab-pane fade show active" id="xmlriver-frequency" role="tabpanel" aria-labelledby="xmlriver-frequency-tab">
+                        <div class="alert alert-primary">
+                            <p class="mb-2">Выбери один способ ввода: вставь фразы по одной на строку или загрузи XLSX с заголовком столбца <code>phrase</code>.</p>
+                            <ul class="mb-0">
+                                <li><strong>Textarea:</strong> для каждой фразы собираются базовая частота и фразовая (запрос в кавычках). В отчёте будут столбцы <code>phrase</code>, <code>total_value</code>, <code>phrasal_value</code>.</li>
+                                <li><strong>XLSX без чекбокса:</strong> собираются обе частоты, результат выгружается в те же три столбца.</li>
+                                <li><strong>XLSX с чекбоксом «Сбор только фразовой частоты»:</strong> отправляется только запрос в кавычках, а <code>phrasal_value</code> добавляется последним столбцом исходной таблицы.</li>
+                            </ul>
+                        </div>
+                        <form hx-post="/xmlriver/frequency" hx-target="#xmlriver-frequency-result" hx-swap="innerHTML"
+                            hx-encoding="multipart/form-data" enctype="multipart/form-data">
+                            <label class="form-label" for="xmlriver-frequency-text">Список фраз</label>
+                            <textarea class="form-control mb-3" id="xmlriver-frequency-text" name="phrases_text" rows="4" placeholder="Фраза 1&#10;Фраза 2"></textarea>
+                            <label class="form-label" for="xmlriver-frequency-file">Или файл XLSX</label>
+                            <input class="form-control mb-3" id="xmlriver-frequency-file" type="file" name="phrases_file" accept=".xlsx">
+                            <div class="form-check mb-3 d-none" id="xmlriver-frequency-phrasal-option">
+                                <input class="form-check-input" id="xmlriver-frequency-phrasal-only" type="checkbox" name="phrasal_only" value="true">
+                                <label class="form-check-label" for="xmlriver-frequency-phrasal-only">Сбор только фразовой частоты</label>
+                            </div>
+                            <button class="btn btn-primary" type="submit">Собрать частоты <span class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status"></span></button>
+                        </form>
+                        <script>
+                            const frequencyFileInput = document.getElementById('xmlriver-frequency-file');
+                            const phrasalOption = document.getElementById('xmlriver-frequency-phrasal-option');
+                            const phrasalCheckbox = document.getElementById('xmlriver-frequency-phrasal-only');
+                            frequencyFileInput.addEventListener('change', () => {
+                                const fileSelected = frequencyFileInput.files.length > 0;
+                                phrasalOption.classList.toggle('d-none', !fileSelected);
+                                if (!fileSelected) phrasalCheckbox.checked = false;
+                            });
+                        </script>
+                        <div id="xmlriver-frequency-result" class="mt-3"></div>
+                    </div>
+                    <div class="tab-pane fade" id="xmlriver-popular" role="tabpanel" aria-labelledby="xmlriver-popular-tab">
+                        <div class="alert alert-primary">Вставь фразы по одной на строку или загрузи XLSX с заголовком столбца <code>phrase</code>. Выбери только один способ ввода.</div>
+                        <form hx-post="/xmlriver/popular" hx-target="#xmlriver-popular-result" hx-swap="innerHTML"
+                            hx-encoding="multipart/form-data" enctype="multipart/form-data">
+                            <label class="form-label" for="xmlriver-popular-text">Список фраз</label>
+                            <textarea class="form-control mb-3" id="xmlriver-popular-text" name="phrases_text" rows="4" placeholder="Фраза 1&#10;Фраза 2"></textarea>
+                            <label class="form-label" for="xmlriver-popular-file">Или файл XLSX</label>
+                            <input class="form-control mb-3" id="xmlriver-popular-file" type="file" name="phrases_file" accept=".xlsx">
+                            <button class="btn btn-primary" type="submit">Собрать фразы <span class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status"></span></button>
+                        </form>
+                        <div id="xmlriver-popular-result" class="mt-3"></div>
+                    </div>
+                    <div class="tab-pane fade" id="xmlriver-serp" role="tabpanel" aria-labelledby="xmlriver-serp-tab">
+                        <div class="alert alert-primary">Вставь фразы по одной на строку или загрузи XLSX с заголовком столбца <code>phrase</code>. Выбери только один способ ввода.</div>
+                        <form hx-post="/xmlriver/serp" hx-target="#xmlriver-serp-result" hx-swap="innerHTML"
+                            hx-encoding="multipart/form-data" enctype="multipart/form-data">
+                            <label class="form-label" for="xmlriver-serp-text">Список фраз</label>
+                            <textarea class="form-control mb-3" id="xmlriver-serp-text" name="phrases_text" rows="4" placeholder="Фраза 1&#10;Фраза 2"></textarea>
+                            <label class="form-label" for="xmlriver-serp-file">Или файл XLSX</label>
+                            <input class="form-control mb-3" id="xmlriver-serp-file" type="file" name="phrases_file" accept=".xlsx">
+                            <label class="form-label" for="xmlriver-serp-top-n">Количество результатов на фразу</label>
+                            <select class="form-select mb-3" id="xmlriver-serp-top-n" name="top_n">
+                                <option value="10">ТОП 10</option><option value="20">ТОП 20</option><option value="30">ТОП 30</option>
+                            </select>
+                            <button class="btn btn-primary" type="submit">Собрать ТОП конкурентов <span class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status"></span></button>
+                        </form>
+                        <div id="xmlriver-serp-result" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- ======================================================================= -->
         <!-- КАРТОЧКА 2: Инструменты работы с проектом VILMED                        -->
@@ -299,7 +387,10 @@
                 '/bar_tags',
                 '/keywords_search',
                 '/overspam',
-                '/update_cat_menu'
+                '/update_cat_menu',
+                '/xmlriver/frequency',
+                '/xmlriver/popular',
+                '/xmlriver/serp'
             ]);
             const output = document.getElementById('live-log-output');
             const status = document.getElementById('live-log-status');
@@ -308,6 +399,8 @@
             let streamFinished = false;
 
             window.addEventListener('pagehide', () => {
+                const pendingXmlriverDownload = document.querySelector('a[href^="/download/xmlriver/"]');
+                if (pendingXmlriverDownload) return;
                 navigator.sendBeacon('/cleanup_temp_files');
             });
 

@@ -28,6 +28,7 @@ pymorphy3==2.0.2
 pymorphy3-dicts-ru==2.4.417150.4580142
 pyTelegramBotAPI==4.29.1
 python-dateutil==2.9.0.post0
+python-dotenv==1.0.1
 python-multipart==0.0.27
 pytz==2025.2
 requests==2.32.3
