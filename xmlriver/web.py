@@ -10,8 +10,8 @@ from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
-from scripts.live_log_stream import run_with_log_capture
-from scripts.manage_temp_dir import manage_temp_dir
+from shared.log_stream import run_with_log_capture
+from shared.temp_storage import manage_temp_dir
 from xmlriver.export import append_phrasal_values_xlsx, write_results_xlsx
 from xmlriver.input import PhraseInputError, parse_phrases
 from xmlriver.registry import MODULES

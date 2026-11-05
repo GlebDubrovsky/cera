@@ -18,6 +18,7 @@
 - A functional module is an independently usable, user-facing product capability. Give it a documented contract and a public Python entry point so code-defined scenarios can call it without going through FastAPI.
 - Keep the capability's core logic independent of its UI and transport layer. UI/API routes are adapters that call the same public entry point; do not duplicate business logic in routes.
 - Put functional capabilities in `modules/<capability>/` (or `modules/<service>/` when grouped by service). Keep capability-specific logic and settings with that capability.
+- A functional capability may have a UI/API without a separate administration, CRUD, or code-management interface. Keep its logic in `modules/` and its UI/API in the adapter layers; UI presence does not make it a shared utility.
 - Put cross-cutting infrastructure and utilities genuinely reused by multiple capabilities in top-level `shared/`. Shared code is not itself a user-facing workflow; do not place capability-specific logic there merely for convenience.
 - Put workflows that orchestrate multiple capabilities in top-level `scenarios/`; have them call the modules' public Python entry points.
 - Before adding functionality, inspect `shared/` and relevant capability packages for reusable code. Reuse existing behavior, but do not force service-specific logic into `shared/`.

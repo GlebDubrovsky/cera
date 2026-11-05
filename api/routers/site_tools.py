@@ -12,7 +12,7 @@ from html import escape
 
 from config.config import CONFIG_LINK_SELECTION_BAR_TAGS, HEADERS
 from modules.site_tools.bar_tags import link_selection_bar_tags
-from shared.browser_links import open_links_in_browser
+from modules.site_tools.open_links import open_links_in_browser
 from shared.link_checker import check_link
 from shared.log_stream import run_with_log_capture
 from shared.temp_storage import manage_temp_dir

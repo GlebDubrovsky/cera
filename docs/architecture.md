@@ -30,6 +30,16 @@
 
 Для прямого вызова из другого Python-кода используй `modules.xmlriver.service.run_module`, а не HTTP-запрос к собственному приложению.
 
+### `modules/relevance_analyzer/`
+
+- `service.py:run_analysis` — публичный вход для прямого Python-вызова; принимает проверенную конфигурацию и возвращает объект `Relevance` с рассчитанной статистикой.
+- `config_input.py` — чтение исходного TXT-формата и JSON-конфигураций.
+- `relevance.py`, `text_analyzer.py`, `morph.py`, `stopwords.py` — независимое от FastAPI ядро анализа и нормализации.
+- `export.py:export_xlsx` — формирует четыре XLSX-отчёта; строки экранируются от формул.
+- `api/routers/relevance_analyzer.py` — веб-адаптер запуска и скачивания ZIP-архива; внешние URL и перенаправления проверяются перед загрузкой.
+
+Для Python-сценария вызывай `modules.relevance_analyzer.run_analysis(config)` напрямую. Веб-путь: `/relevance-analyzer` → `run_analysis` → четыре XLSX-файла в ZIP.
+
 ### `modules/vilmed/`
 
 - `overspam.py:overspam_vilmed` — обработка таблицы overspam.
@@ -39,6 +49,7 @@
 ### `modules/site_tools/`
 
 - `bar_tags.py:link_selection_bar_tags` — основная функция обработки bar tags.
+- `open_links.py:open_links_in_browser` — открытие переданного списка ссылок в системном браузере; интерфейс предоставляется через API и шаблон, отдельное администрирование функции не требуется.
 - `update_sheet_bar_tags.py:main` — отдельный процесс обновления таблицы bar tags; перед повторным использованием проверь его входы, побочные эффекты и фактический способ запуска.
 - `api/routers/site_tools.py` — HTTP-адаптеры операций с bar tags и ссылками.
 
@@ -49,7 +60,6 @@
 - `shared/phrase_import.py:parse_phrases` — разбор фраз из текста или XLSX.
 - `shared/temp_storage.py:manage_temp_dir` — создание, получение и удаление временных каталогов.
 - `shared/log_stream.py:run_with_log_capture`, `stream_session` — захват вывода задачи и передача логов через SSE.
-- `shared/browser_links.py:open_links_in_browser` — открытие списка ссылок в браузере.
 - `shared/link_checker.py:check_link` — проверка доступности ссылки.
 - `shared/directory_cleanup.py:clear_directory` — очистка содержимого указанного каталога.
 
