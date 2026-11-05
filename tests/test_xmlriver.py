@@ -13,16 +13,12 @@ from unittest.mock import Mock, patch
 from fastapi import BackgroundTasks
 from openpyxl import Workbook, load_workbook
 
-from xmlriver.export import append_phrasal_values_xlsx, write_results_xlsx
-from xmlriver.input import PhraseInputError, parse_phrases
-from xmlriver.registry import ModuleSpec
-from xmlriver.service import run_module
-from xmlriver.xmlriver_frequency import fetch_frequencies
-
-try:
-    from xmlriver import web
-except RuntimeError:
-    web = None
+from api.routers import xmlriver as web
+from modules.xmlriver.export import append_phrasal_values_xlsx, write_results_xlsx
+from shared.phrase_import import PhraseInputError, parse_phrases
+from modules.xmlriver.registry import ModuleSpec
+from modules.xmlriver.service import run_module
+from modules.xmlriver.xmlriver_frequency import fetch_frequencies
 
 
 def make_phrase_xlsx() -> bytes:
@@ -64,10 +60,10 @@ class ModuleServiceTests(unittest.TestCase):
         module_function = Mock(return_value=[{"phrase": "пример", "total_value": 12, "error": None}])
         module_spec = ModuleSpec("frequency", "Сбор частот", module_function, {})
         output = StringIO()
-        with patch("xmlriver.service.get_module", return_value=module_spec), \
-                patch("xmlriver.service.XMLRIVER_USER", "configured-user"), \
-                patch("xmlriver.service.XMLRIVER_KEY", "configured-key"), \
-                patch("xmlriver.service.SETTINGS", {}), \
+        with patch("modules.xmlriver.service.get_module", return_value=module_spec), \
+                patch("modules.xmlriver.service.XMLRIVER_USER", "configured-user"), \
+                patch("modules.xmlriver.service.XMLRIVER_KEY", "configured-key"), \
+                patch("modules.xmlriver.service.SETTINGS", {}), \
                 redirect_stdout(output):
             results = run_module("frequency", ["пример"])
         self.assertEqual(results[0]["total_value"], 12)
@@ -78,7 +74,7 @@ class ModuleServiceTests(unittest.TestCase):
         )
 
     def test_rejects_empty_phrase_before_module_call(self) -> None:
-        with patch("xmlriver.service.get_module") as get_module:
+        with patch("modules.xmlriver.service.get_module") as get_module:
             with self.assertRaisesRegex(ValueError, "непустые строки"):
                 run_module("frequency", [""])
         get_module.assert_called_once_with("frequency")
@@ -86,7 +82,7 @@ class ModuleServiceTests(unittest.TestCase):
 
 class FrequencyModeTests(unittest.TestCase):
     def test_both_mode_sends_original_and_quoted_queries(self) -> None:
-        with patch("xmlriver.xmlriver_frequency.fetch_frequency", side_effect=[{"totalValue": 21}, {"totalValue": 8}]) as request, \
+        with patch("modules.xmlriver.xmlriver_frequency.fetch_frequency", side_effect=[{"totalValue": 21}, {"totalValue": 8}]) as request, \
                 redirect_stdout(StringIO()):
             results = fetch_frequencies(["частота"], user_id="user", api_key="key", mode="both")
 
@@ -95,7 +91,7 @@ class FrequencyModeTests(unittest.TestCase):
         self.assertEqual(results[0]["phrasal_value"], 8)
 
     def test_phrasal_mode_sends_only_quoted_query(self) -> None:
-        with patch("xmlriver.xmlriver_frequency.fetch_frequency", return_value={"totalValue": 8}) as request, \
+        with patch("modules.xmlriver.xmlriver_frequency.fetch_frequency", return_value={"totalValue": 8}) as request, \
                 redirect_stdout(StringIO()):
             results = fetch_frequencies(["частота"], user_id="user", api_key="key", mode="phrasal")
 
@@ -151,7 +147,7 @@ class XLSXExportTests(unittest.TestCase):
             workbook.close()
 
     def test_cell_text_is_redacted_and_formula_injection_blocked(self) -> None:
-        with tempfile.TemporaryDirectory() as directory, patch("xmlriver.export.XMLRIVER_KEY", "test-secret"):
+        with tempfile.TemporaryDirectory() as directory, patch("modules.xmlriver.export.XMLRIVER_KEY", "test-secret"):
             file_path = Path(directory) / "safe.xlsx"
             write_results_xlsx(file_path, "frequency", [{"phrase": "=1+1", "total_value": None, "error": "test-secret"}])
             workbook = load_workbook(file_path, read_only=True, data_only=True)
@@ -182,8 +178,8 @@ class XMLRiverRouteTests(unittest.IsolatedAsyncioTestCase):
                     return True
                 return False
 
-            with patch("xmlriver.web.manage_temp_dir", side_effect=temp_manager), \
-                    patch("xmlriver.web.run_module", return_value=[{"phrase": "пример", "total_value": 5, "error": None}]):
+            with patch("api.routers.xmlriver.manage_temp_dir", side_effect=temp_manager), \
+                    patch("api.routers.xmlriver.run_module", return_value=[{"phrase": "пример", "total_value": 5, "error": None}]):
                 response = await web.run_frequency("пример", None, "123e4567-e89b-12d3-a456-426614174000")
                 self.assertEqual(response.status_code, 200)
                 match = re.search(r"/download/xmlriver/frequency/([0-9a-f-]+)", response.body.decode())
@@ -201,8 +197,8 @@ class XMLRiverRouteTests(unittest.IsolatedAsyncioTestCase):
                 {"phrase": "первая", "total_value": 20, "phrasal_value": 5},
                 {"phrase": "вторая", "total_value": 12, "phrasal_value": 3},
             ]
-            with patch("xmlriver.web.manage_temp_dir", return_value=directory), \
-                    patch("xmlriver.web.run_module", return_value=dual_results) as module_runner, \
+            with patch("api.routers.xmlriver.manage_temp_dir", return_value=directory), \
+                    patch("api.routers.xmlriver.run_module", return_value=dual_results) as module_runner, \
                     redirect_stdout(StringIO()):
                 web._run_job("frequency", "первая\nвторая", "", b"", 10)
             module_runner.assert_called_once_with(
@@ -218,8 +214,8 @@ class XMLRiverRouteTests(unittest.IsolatedAsyncioTestCase):
                 {"phrase": "первая фраза", "total_value": 14, "phrasal_value": 4},
                 {"phrase": "вторая фраза", "total_value": 9, "phrasal_value": 2},
             ]
-            with patch("xmlriver.web.manage_temp_dir", return_value=directory), \
-                    patch("xmlriver.web.run_module", return_value=dual_file_results) as module_runner, \
+            with patch("api.routers.xmlriver.manage_temp_dir", return_value=directory), \
+                    patch("api.routers.xmlriver.run_module", return_value=dual_file_results) as module_runner, \
                     redirect_stdout(StringIO()):
                 web._run_job("frequency", "", "input.xlsx", file_content, 10)
             module_runner.assert_called_once_with(
@@ -235,8 +231,8 @@ class XMLRiverRouteTests(unittest.IsolatedAsyncioTestCase):
                 {"phrase": "первая фраза", "phrasal_value": 6},
                 {"phrase": "вторая фраза", "phrasal_value": 3},
             ]
-            with patch("xmlriver.web.manage_temp_dir", return_value=directory), \
-                    patch("xmlriver.web.run_module", return_value=phrasal_results) as module_runner, \
+            with patch("api.routers.xmlriver.manage_temp_dir", return_value=directory), \
+                    patch("api.routers.xmlriver.run_module", return_value=phrasal_results) as module_runner, \
                     redirect_stdout(StringIO()):
                 web._run_job("frequency", "", "input.xlsx", file_content, 10, True)
             module_runner.assert_called_once_with(
@@ -248,7 +244,7 @@ class XMLRiverRouteTests(unittest.IsolatedAsyncioTestCase):
             workbook.close()
 
     async def test_invalid_form_returns_html_response_without_api_call(self) -> None:
-        with patch("xmlriver.web.run_module") as module_runner:
+        with patch("api.routers.xmlriver.run_module") as module_runner:
             response = await web.run_frequency("", None, "123e4567-e89b-12d3-a456-426614174001")
         self.assertEqual(response.status_code, 400)
         self.assertIn("alert-danger", response.body.decode())
