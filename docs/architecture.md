@@ -40,6 +40,15 @@
 
 Для Python-сценария вызывай `modules.relevance_analyzer.run_analysis(config)` напрямую. Веб-путь: `/relevance-analyzer` → `run_analysis` → четыре XLSX-файла в ZIP.
 
+### `modules/openai_api/`
+
+- `service.py:chat_completion` — публичный независимый от FastAPI клиент OpenAI Chat Completions; принимает OpenAI-совместимый формат, отправляет HTTPS-запрос и возвращает JSON API.
+- `settings.py` — читает `OPENAI_API_KEY`, `OPENAI_BASE_URL`, `OPENAI_MODEL` и `OPENAI_TIMEOUT_SECONDS` из окружения; ключ не логируется.
+- `api/routers/openai_api.py` — REST-адаптер `POST /api/openai/chat/completions`; сетевой вызов выполняется вне event loop. Endpoint не требует клиентского токена и должен быть доступен только из доверенной сети.
+- `templates/dashboard.html` — форма отправки запроса с настройкой температуры и максимальной длины ответа.
+
+Для прямого вызова из Python используй `modules.openai_api.chat_completion(messages, model=..., temperature=...)`. `OPENAI_BASE_URL` можно настроить на сервер OpenAI или совместимый API. Ключ провайдера хранится только в `.env` на сервере.
+
 ### `modules/vilmed/`
 
 - `overspam.py:overspam_vilmed` — обработка таблицы overspam.
