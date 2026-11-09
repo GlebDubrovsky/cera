@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import asyncio
 from typing import Any, Literal
+from uuid import UUID
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from shared.log_stream import run_with_log_capture
 from modules.openai_api import (
     OpenAIAPIError,
     OpenAIConfigurationError,
@@ -37,19 +39,24 @@ class ChatCompletionRequest(BaseModel):
     temperature: float | None = Field(default=None, ge=0, le=2)
     max_tokens: int | None = Field(default=None, ge=1, le=65_536)
     top_p: float | None = Field(default=None, ge=0, le=1)
+    reasoning_enabled: bool | None = None
+    log_id: UUID | None = None
 
 
 @router.post('/api/openai/chat/completions')
 async def create_chat_completion(request: ChatCompletionRequest) -> dict[str, Any]:
-    """Выполняет синхронный вызов вне event loop; доступ ограничивается доверенной сетью."""
+    """Выполняет вызов вне event loop и отправляет принты модуля в SSE-сессию."""
     try:
         return await asyncio.to_thread(
+            run_with_log_capture,
+            str(request.log_id) if request.log_id else '',
             chat_completion,
             [message.model_dump() for message in request.messages],
             model=request.model,
             temperature=request.temperature,
             max_tokens=request.max_tokens,
             top_p=request.top_p,
+            reasoning_enabled=request.reasoning_enabled,
         )
     except OpenAIInputError as error:
         raise HTTPException(status_code=400, detail=str(error)) from None

@@ -7,6 +7,7 @@ import unittest
 from contextlib import redirect_stdout
 from io import StringIO
 from unittest.mock import Mock, patch
+from uuid import uuid4
 
 import requests
 from fastapi import HTTPException
@@ -14,6 +15,7 @@ from fastapi import HTTPException
 from api.routers import openai_api as web
 from modules.openai_api import OpenAIAPIError, OpenAIConfigurationError, OpenAIInputError, chat_completion
 from modules.openai_api.settings import get_settings
+from shared.log_stream import stream_session
 
 
 class OpenAISettingsTests(unittest.TestCase):
@@ -71,7 +73,32 @@ class OpenAIClientTests(unittest.TestCase):
         self.assertEqual(kwargs['json']['messages'], [{'role': 'user', 'content': 'hi'}])
         self.assertEqual(kwargs['json']['stream'], False)
         self.assertEqual(kwargs['json']['max_tokens'], 25)
+        self.assertNotIn('reasoning', kwargs['json'])
+        self.assertNotIn('reasoning_effort', kwargs['json'])
         self.assertEqual(kwargs['timeout'], 60)
+
+    def test_can_disable_reasoning(self) -> None:
+        response = Mock()
+        response.json.return_value = {'choices': [{'message': {'content': 'hello'}}]}
+        environment = {'OPENAI_API_KEY': 'test-key', 'OPENAI_MODEL': 'test-model'}
+        with patch.dict(os.environ, environment, clear=True), \
+                patch('modules.openai_api.service.requests.post', return_value=response) as post, \
+                redirect_stdout(StringIO()):
+            chat_completion([{'role': 'user', 'content': 'hi'}], reasoning_enabled=False)
+
+        self.assertEqual(post.call_args.kwargs['json']['reasoning'], {'enabled': False})
+        self.assertNotIn('reasoning_effort', post.call_args.kwargs['json'])
+
+    def test_can_enable_reasoning(self) -> None:
+        response = Mock()
+        response.json.return_value = {'choices': [{'message': {'content': 'hello'}}]}
+        environment = {'OPENAI_API_KEY': 'test-key', 'OPENAI_MODEL': 'test-model'}
+        with patch.dict(os.environ, environment, clear=True), \
+                patch('modules.openai_api.service.requests.post', return_value=response) as post, \
+                redirect_stdout(StringIO()):
+            chat_completion([{'role': 'user', 'content': 'hi'}], reasoning_enabled=True)
+
+        self.assertEqual(post.call_args.kwargs['json']['reasoning'], {'enabled': True})
 
     def test_invalid_input_does_not_make_request(self) -> None:
         with patch('modules.openai_api.service.requests.post') as post:
@@ -104,11 +131,33 @@ class OpenAIClientTests(unittest.TestCase):
 class OpenAIRouteTests(unittest.IsolatedAsyncioTestCase):
     async def test_route_calls_public_module_entrypoint_without_client_token(self) -> None:
         expected = {'choices': [{'message': {'content': 'hello'}}]}
-        request = web.ChatCompletionRequest(messages=[web.ChatMessage(role='user', content='hi')])
+        request = web.ChatCompletionRequest(
+            messages=[web.ChatMessage(role='user', content='hi')], reasoning_enabled=True,
+        )
         with patch('api.routers.openai_api.chat_completion', return_value=expected) as completion:
             response = await web.create_chat_completion(request)
         self.assertEqual(response, expected)
-        completion.assert_called_once()
+        self.assertTrue(completion.call_args.kwargs['reasoning_enabled'])
+
+    async def test_route_sends_module_prints_to_sse_session(self) -> None:
+        log_id = uuid4()
+        expected = {'choices': [{'message': {'content': 'hello'}}]}
+
+        def print_progress(*args: object, **kwargs: object) -> dict[str, object]:
+            print('[OPENAI_API][TEST][SUCCESS] progress reached SSE', flush=True)
+            return expected
+
+        request = web.ChatCompletionRequest(
+            messages=[web.ChatMessage(role='user', content='hi')],
+            log_id=log_id,
+        )
+        with patch('api.routers.openai_api.chat_completion', side_effect=print_progress):
+            response = await web.create_chat_completion(request)
+
+        events = [event async for event in stream_session(str(log_id))]
+        self.assertEqual(response, expected)
+        self.assertTrue(any('progress reached SSE' in event for event in events))
+        self.assertTrue(any('event: done' in event for event in events))
 
     async def test_route_hides_provider_error_details(self) -> None:
         request = web.ChatCompletionRequest(messages=[web.ChatMessage(role='user', content='hi')])

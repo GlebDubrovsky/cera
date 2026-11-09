@@ -73,16 +73,19 @@ def chat_completion(
     temperature: float | None = None,
     max_tokens: int | None = None,
     top_p: float | None = None,
+    reasoning_enabled: bool | None = None,
 ) -> dict[str, Any]:
     """Отправляет Chat Completions-запрос и возвращает JSON-ответ провайдера.
 
-    Принимает список ``{role, content}`` и необязательные параметры модели,
-    отправляет ``POST {OPENAI_BASE_URL}/chat/completions``. Ключ API и модель
-    по умолчанию берутся из окружения; секреты и тексты сообщений не логируются.
+    ``reasoning_enabled`` управляет рассуждениями вызова: ``None`` сохраняет
+    поведение модели, а ``True`` и ``False`` передаются в ``reasoning.enabled``.
+    Поддержка явного управления зависит от модели и провайдера.
     """
     print('[OPENAI_API][VALIDATION][START] Проверка сообщений и параметров запроса.', flush=True)
     normalized_messages = _validate_messages(messages)
     _validate_optional_parameters(model, temperature, max_tokens, top_p)
+    if reasoning_enabled is not None and not isinstance(reasoning_enabled, bool):
+        raise OpenAIInputError('reasoning_enabled должен быть логическим значением или None.')
     settings = get_settings()
 
     payload: dict[str, object] = {
@@ -96,6 +99,8 @@ def chat_completion(
         payload['max_tokens'] = max_tokens
     if top_p is not None:
         payload['top_p'] = top_p
+    if reasoning_enabled is not None:
+        payload['reasoning'] = {'enabled': reasoning_enabled}
 
     print(f'[OPENAI_API][REQUEST][START] Отправка запроса ({len(normalized_messages)} сообщений).', flush=True)
     try:

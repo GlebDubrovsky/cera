@@ -190,6 +190,15 @@
                             <div class="form-text">Ограничивает длину ответа. Фактический максимум зависит от модели.</div>
                         </div>
                     </div>
+                    <div class="mb-3">
+                        <label class="form-label" for="openai-reasoning-mode">Режим рассуждений</label>
+                        <select class="form-select" id="openai-reasoning-mode">
+                            <option value="default">По настройке модели</option>
+                            <option value="enabled">Включить</option>
+                            <option value="disabled">Отключить</option>
+                        </select>
+                        <div class="form-text">Явный режим работает, если модель и провайдер поддерживают управление reasoning.</div>
+                    </div>
                     <label class="form-label" for="openai-system-prompt">Системная инструкция (необязательно)</label>
                     <textarea class="form-control mb-3" id="openai-system-prompt" rows="2"
                         placeholder="Например: Отвечай кратко и по делу."></textarea>
@@ -213,6 +222,30 @@
                 const messages = [];
                 if (systemPrompt) messages.push({ role: 'system', content: systemPrompt });
                 messages.push({ role: 'user', content: userPrompt });
+                const output = document.getElementById('live-log-output');
+                const status = document.getElementById('live-log-status');
+                const logId = crypto.randomUUID();
+                if (window.openAiLogStream) window.openAiLogStream.close();
+                output.textContent = '';
+                status.textContent = 'подключение…';
+                let logStreamFinished = false;
+                const logStream = new EventSource(`/logs/${logId}`);
+                window.openAiLogStream = logStream;
+                logStream.onopen = () => {
+                    status.textContent = 'выполняется';
+                };
+                logStream.onmessage = (messageEvent) => {
+                    output.textContent += JSON.parse(messageEvent.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                logStream.addEventListener('done', () => {
+                    logStreamFinished = true;
+                    status.textContent = 'завершено';
+                    logStream.close();
+                });
+                logStream.onerror = () => {
+                    status.textContent = 'переподключение…';
+                };
                 result.className = 'alert alert-info mt-3';
                 result.textContent = 'Запрос отправляется…';
                 submitButton.disabled = true;
@@ -224,7 +257,12 @@
                         body: JSON.stringify({
                             temperature: Number(document.getElementById('openai-temperature').value),
                             max_tokens: Number(document.getElementById('openai-max-tokens').value),
-                            messages
+                            reasoning_enabled: (() => {
+                                const mode = document.getElementById('openai-reasoning-mode').value;
+                                return mode === 'default' ? null : mode === 'enabled';
+                            })(),
+                            messages,
+                            log_id: logId
                         })
                     });
                     const data = await response.json().catch(() => ({}));
@@ -238,6 +276,12 @@
                     result.textContent = error instanceof Error ? error.message : 'Не удалось связаться с сервером.';
                 } finally {
                     submitButton.disabled = false;
+                    setTimeout(() => {
+                        if (window.openAiLogStream !== logStream || logStreamFinished) return;
+                        logStream.close();
+                        logStreamFinished = true;
+                        status.textContent = 'завершено';
+                    }, 2000);
                 }
             });
         </script>
