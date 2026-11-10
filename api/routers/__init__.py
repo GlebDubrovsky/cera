@@ -10,12 +10,14 @@ from api.routers.xmlriver import router as xmlriver_router
 from api.routers.relevance_analyzer import router as relevance_analyzer_router
 from api.routers.openai_api import router as openai_api_router
 from api.routers.xmlstock import router as xmlstock_router
+from api.routers.auto_news_meta_tags import router as auto_news_meta_tags_router
 
 router = APIRouter()
 router.include_router(pages_router)
 router.include_router(system_router)
 router.include_router(site_tools_router)
 router.include_router(xmlstock_router)
+router.include_router(auto_news_meta_tags_router)
 router.include_router(vilmed_router)
 router.include_router(xmlriver_router)
 router.include_router(relevance_analyzer_router)

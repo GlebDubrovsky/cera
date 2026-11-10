@@ -286,6 +286,38 @@
             });
         </script>
 
+        <section class="card shadow-sm mt-4" aria-labelledby="auto-landings-title">
+            <div class="card-header">
+                <h5 class="mb-2" id="auto-landings-title">Авто лендинги</h5>
+                <ul class="nav nav-tabs card-header-tabs" id="auto-landings-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="auto-news-meta-tags-tab" data-bs-toggle="tab"
+                            data-bs-target="#auto-news-meta-tags-pane" type="button" role="tab"
+                            aria-controls="auto-news-meta-tags-pane" aria-selected="true">Мета-теги NEWS</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content" id="auto-landings-tab-content">
+                    <div class="tab-pane fade show active" id="auto-news-meta-tags-pane" role="tabpanel"
+                        aria-labelledby="auto-news-meta-tags-tab" tabindex="0">
+                        <p class="text-muted">Вставь ссылки на новости, по одной на строку (до 50 ссылок). Для каждой успешной страницы будет создан отдельный TXT-файл с ответом модели.</p>
+                        <form hx-post="/auto-landings/meta-tags-news" hx-target="#auto-news-meta-tags-result"
+                            hx-swap="innerHTML" hx-indicator="#auto-news-meta-tags-loader">
+                            <label class="form-label" for="auto-news-meta-tags-links">Ссылки на новости</label>
+                            <textarea class="form-control mb-3" id="auto-news-meta-tags-links" name="links_text"
+                                rows="8" placeholder="https://example.com/news/article" required></textarea>
+                            <button class="btn btn-primary" type="submit">Запустить
+                                <span id="auto-news-meta-tags-loader" class="htmx-indicator spinner-border spinner-border-sm ms-2"
+                                    role="status" aria-label="Выполняется"></span>
+                            </button>
+                        </form>
+                        <div id="auto-news-meta-tags-result" class="mt-3" aria-live="polite"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="card shadow-sm mt-4" aria-labelledby="xmlstock-title">
             <div class="card-header">
                 <h5 class="mb-2" id="xmlstock-title">XMLStock</h5>
@@ -859,7 +891,8 @@
                 '/xmlriver/frequency',
                 '/xmlriver/popular',
                 '/xmlriver/serp',
-                '/relevance-analyzer'
+                '/relevance-analyzer',
+                '/auto-landings/meta-tags-news'
             ]);
             const output = document.getElementById('live-log-output');
             const status = document.getElementById('live-log-status');
@@ -868,7 +901,7 @@
             let streamFinished = false;
 
             window.addEventListener('pagehide', () => {
-                const pendingDownload = document.querySelector('a[href^="/download/xmlriver/"], a[href^="/download/relevance-analyzer/"]');
+                const pendingDownload = document.querySelector('a[href^="/download/xmlriver/"], a[href^="/download/relevance-analyzer/"], a[href^="/download/auto-landings/meta-tags-news/"]');
                 if (pendingDownload) return;
                 navigator.sendBeacon('/cleanup_temp_files');
             });
@@ -917,6 +950,13 @@
                 activeStream.onerror = () => {
                     status.textContent = 'переподключение…';
                 };
+            });
+
+            document.body.addEventListener('htmx:beforeSwap', (event) => {
+                const form = event.detail.elt.closest('form');
+                if (!form || form.getAttribute('hx-post') !== '/auto-landings/meta-tags-news') return;
+                event.detail.shouldSwap = true;
+                event.detail.isError = false;
             });
 
             document.body.addEventListener('htmx:afterRequest', (event) => {
