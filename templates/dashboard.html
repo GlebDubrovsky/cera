@@ -286,6 +286,329 @@
             });
         </script>
 
+        <section class="card shadow-sm mt-4" aria-labelledby="xmlstock-title">
+            <div class="card-header">
+                <h5 class="mb-2" id="xmlstock-title">XMLStock</h5>
+                <ul class="nav nav-tabs card-header-tabs" id="xmlstock-tabs" role="tablist">
+                    <li class="nav-item"><button class="nav-link active" id="xmlstock-proxy-tab" data-bs-toggle="tab" data-bs-target="#xmlstock-proxy" type="button" role="tab">Яндекс XML Proxy</button></li>
+                    <li class="nav-item"><button class="nav-link" id="xmlstock-live-tab" data-bs-toggle="tab" data-bs-target="#xmlstock-live" type="button" role="tab">Яндекс Live</button></li>
+                    <li class="nav-item"><button class="nav-link" id="xmlstock-google-tab" data-bs-toggle="tab" data-bs-target="#xmlstock-google" type="button" role="tab">Google XML Search</button></li>
+                    <li class="nav-item"><button class="nav-link" id="xmlstock-wordstat-tab" data-bs-toggle="tab" data-bs-target="#xmlstock-wordstat" type="button" role="tab">Яндекс Wordstat</button></li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Учётные данные задаются на сервере через <code>XMLSTOCK_USER</code> и <code>XMLSTOCK_KEY</code>. Ответ API показывается как текст.</p>
+                <div class="tab-content">
+                    <div class="tab-pane fade show active" id="xmlstock-proxy" role="tabpanel" aria-labelledby="xmlstock-proxy-tab">
+                        <div class="alert alert-primary">
+                            <strong>Поля Яндекс XML Proxy</strong>
+                            <ul class="mb-0">
+                                <li><code>Поисковый запрос</code> — обязательная фраза до 400 символов; поддерживаются операторы вроде <code>site:</code>, <code>mime:</code>, <code>lang:</code> и <code>date:</code>.</li>
+                                <li><code>Регион (lr)</code> — ID региона поиска, например <code>213</code> для Москвы. <code>Страница</code> — номер страницы выдачи с нуля.</li>
+                                <li><code>Домен</code> — доменная зона Яндекса (<code>ru</code>, <code>by</code>, <code>kz</code>, <code>com.tr</code>); <code>Устройство</code> — тип устройства, для которого запрашивается выдача.</li>
+                                <li><code>Результатов (groupby)</code> — размер выдачи на странице, от 10 до 100. <code>Сортировка</code> — по релевантности (<code>rlv</code>) или времени (<code>tm</code>).</li>
+                                <li><code>Фильтр</code> — уровень фильтрации (<code>moderate</code>, <code>none</code> или семейный <code>strict</code>). <code>Исправление опечаток</code> — исправлять запрос (<code>0</code>) или искать точное совпадение (<code>1</code>).</li>
+                                <li><code>HTTP-метод</code> — отправка запроса методом GET или POST. Ответ этого инструмента всегда в формате XML.</li>
+                            </ul>
+                        </div>
+                        <form data-xmlstock-tool="yandex_xml_proxy">
+                            <label class="form-label">Поисковый запрос</label><input class="form-control mb-3" data-param="query" maxlength="400" placeholder="купить окна" required>
+                            <div class="row g-3">
+                                <div class="col-md-3"><label class="form-label">Регион (lr)</label><input class="form-control" data-param="lr" type="number" min="0"></div>
+                                <div class="col-md-3"><label class="form-label">Страница</label><input class="form-control" data-param="page" type="number" min="0" value="0"></div>
+                                <div class="col-md-3"><label class="form-label">Домен</label><select class="form-select" data-param="domain"><option value="">По умолчанию</option><option>ru</option><option>by</option><option>kz</option><option>com.tr</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Устройство</label><select class="form-select" data-param="device"><option value="">По умолчанию</option><option>desktop</option><option>mobile</option><option>tablet</option><option>iphone</option><option>android</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Результатов (groupby)</label><select class="form-select" data-param="groupby"><option value="">По умолчанию</option><option>10</option><option>20</option><option>30</option><option>40</option><option>50</option><option>60</option><option>70</option><option>80</option><option>90</option><option>100</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Сортировка</label><select class="form-select" data-param="sortby"><option value="">По умолчанию</option><option value="rlv">Релевантность (rlv)</option><option value="tm">По времени (tm)</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Фильтр</label><select class="form-select" data-param="filter"><option value="">По умолчанию</option><option>moderate</option><option>none</option><option>strict</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Исправление опечаток</label><select class="form-select" data-param="noreask"><option value="">По умолчанию</option><option value="0">Исправлять (0)</option><option value="1">Точное совпадение (1)</option></select></div>
+                            </div>
+                            <div class="row g-3 mt-1"><div class="col-md-3"><label class="form-label">HTTP-метод</label><select class="form-select" data-method><option>GET</option><option>POST</option></select></div><div class="col-md-3"><label class="form-label">Формат</label><select class="form-select" data-format disabled><option>xml</option></select></div></div>
+                            <button class="btn btn-primary mt-3" type="submit">Отправить запрос</button>
+                        </form>
+                        <div class="mt-3" data-xmlstock-result aria-live="polite"></div>
+                    </div>
+                    <div class="tab-pane fade" id="xmlstock-live" role="tabpanel" aria-labelledby="xmlstock-live-tab">
+                        <div class="alert alert-primary">
+                            <strong>Поля Яндекс Live</strong>
+                            <ul class="mb-0">
+                                <li><code>Поисковый запрос</code> — обязательная фраза до 400 символов. <code>Режим (tbm)</code> — обычная выдача или поиск картинок/видео; Turbo включает ускоренный режим с выдачей до 50 результатов и тарифицируется отдельно.</li>
+                                <li><code>Устройство</code> — desktop или mobile. <code>Регион (lr)</code> — ID региона поиска. <code>Страница</code> — номер страницы, начиная с нуля.</li>
+                                <li><code>Реклама (ads)</code> — показывать или скрыть рекламные блоки. <code>Похожие запросы (related)</code> — включить или выключить блок «Люди ищут».</li>
+                                <li><code>Период (within)</code> — ограничить результаты сутками, двумя неделями или месяцем; этот параметр действует только для XML и JSON.</li>
+                                <li><code>Подсветка (hlword)</code> — включить или отключить выделение слов запроса тегом <code>&lt;hlword&gt;</code>. <code>Формат</code> — XML, JSON или HTML; HTML доступен только в режиме Turbo.</li>
+                            </ul>
+                        </div>
+                        <form data-xmlstock-tool="yandex_live">
+                            <label class="form-label">Поисковый запрос</label><input class="form-control mb-3" data-param="query" maxlength="400" placeholder="ноутбук" required>
+                            <div class="row g-3">
+                                <div class="col-md-3"><label class="form-label">Режим (tbm)</label><select class="form-select" data-param="tbm"><option value="">Обычный поиск</option><option value="images">Картинки</option><option value="video">Видео</option><option value="turbo">Turbo</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Устройство</label><select class="form-select" data-param="device"><option value="">По умолчанию</option><option>desktop</option><option>mobile</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Регион (lr)</label><input class="form-control" data-param="lr" type="number" min="0"></div>
+                                <div class="col-md-3"><label class="form-label">Страница</label><input class="form-control" data-param="page" type="number" min="0"></div>
+                                <div class="col-md-3"><label class="form-label">Реклама (ads)</label><select class="form-select" data-param="ads"><option value="">По умолчанию</option><option value="1">Включить</option><option value="0">Отключить</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Похожие запросы (related)</label><select class="form-select" data-param="related"><option value="">По умолчанию</option><option value="1">Включить</option><option value="0">Отключить</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Период (within)</label><select class="form-select" data-param="within"><option value="">Без ограничения</option><option value="77">Сутки</option><option value="1">Две недели</option><option value="2">Месяц</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Подсветка (hlword)</label><select class="form-select" data-param="hlword"><option value="">По умолчанию</option><option value="1">Включить</option><option value="0">Отключить</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Формат</label><select class="form-select" data-format><option>xml</option><option>json</option><option>html</option></select></div>
+                            </div>
+                            <button class="btn btn-primary mt-3" type="submit">Отправить запрос</button>
+                        </form>
+                        <div class="mt-3" data-xmlstock-result aria-live="polite"></div>
+                    </div>
+                    <div class="tab-pane fade" id="xmlstock-google" role="tabpanel" aria-labelledby="xmlstock-google-tab">
+                        <div class="alert alert-primary">
+                            <strong>Поля Google XML Search</strong>
+                            <ul class="mb-0">
+                                <li><code>Поисковый запрос</code> — обязательная фраза до 400 символов; поддерживается оператор <code>site:</code>. <code>Регион (lr)</code> — ID региона, который сервис сопоставит с регионом Google.</li>
+                                <li><code>Устройство</code> — desktop или mobile. <code>Тип поиска (tbm)</code> — обычная выдача, картинки, новости или видео.</li>
+                                <li><code>Период (tbs)</code> — быстрый выбор периода: сутки (<code>qdr:d</code>), неделя (<code>qdr:w</code>), месяц (<code>qdr:m</code>) или год (<code>qdr:y</code>). Поле ниже позволяет указать этот параметр вручную, например диапазон дат в формате <code>cdr:1,cd_min:MM/DD/YYYY,cd_max:MM/DD/YYYY</code>.</li>
+                                <li><code>Язык (hl)</code> — язык интерфейса/результатов, например <code>ru</code> или <code>en</code>. <code>Связанные блоки (related)</code> — включить блоки вопросов и запросов по теме.</li>
+                                <li><code>Скрытые результаты (filter)</code> — включить похожие друг на друга результаты, обычно скрываемые Google. <code>Safe Search</code> — режим фильтрации контента: <code>on</code> строгий, <code>off</code> выключен, <code>active</code> размывает контент.</li>
+                                <li><code>AI Overview (ai)</code> — запросить ИИ-ответ; включение тарифицируется дополнительно и может увеличить время ответа. <code>Формат</code> — формат ответа XML, JSON или HTML.</li>
+                            </ul>
+                        </div>
+                        <form data-xmlstock-tool="google_xml_search">
+                            <label class="form-label">Поисковый запрос</label><input class="form-control mb-3" data-param="query" maxlength="400" placeholder="python tutorial" required>
+                            <div class="row g-3">
+                                <div class="col-md-3"><label class="form-label">Регион (lr)</label><input class="form-control" data-param="lr" type="number" min="0"></div>
+                                <div class="col-md-3"><label class="form-label">Устройство</label><select class="form-select" data-param="device"><option value="">По умолчанию</option><option>desktop</option><option>mobile</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Тип поиска (tbm)</label><select class="form-select" data-param="tbm"><option value="">Обычный</option><option>images</option><option>news</option><option>video</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Период (tbs)</label><select class="form-select" data-param="tbs"><option value="">Без ограничения</option><option>qdr:d</option><option>qdr:w</option><option>qdr:m</option><option>qdr:y</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Язык (hl)</label><input class="form-control" data-param="hl" placeholder="ru"></div>
+                                <div class="col-md-3"><label class="form-label">Связанные блоки (related)</label><select class="form-select" data-param="related"><option value="">По умолчанию</option><option value="1">Включить</option><option value="0">Отключить</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Скрытые результаты (filter)</label><select class="form-select" data-param="filter"><option value="">По умолчанию</option><option value="1">Включить</option><option value="0">Отключить</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Safe Search</label><select class="form-select" data-param="safe"><option value="">По умолчанию</option><option>on</option><option>off</option><option>active</option></select></div>
+                                <div class="col-md-3"><label class="form-label">AI Overview (ai)</label><select class="form-select" data-param="ai"><option value="">По умолчанию</option><option value="1">Запросить</option><option value="0">Не запрашивать</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Формат</label><select class="form-select" data-format><option>xml</option><option>json</option><option>html</option></select></div>
+                            </div>
+                            <label class="form-label mt-3">Период или диапазон дат Google (tbs)</label><input class="form-control" data-param="tbs" placeholder="qdr:d или cdr:1,cd_min:01/01/2026,cd_max:31/12/2026">
+                            <div class="form-text">Можно выбрать готовый период выше или ввести полный параметр tbs для диапазона.</div>
+                            <button class="btn btn-primary mt-3" type="submit">Отправить запрос</button>
+                        </form>
+                        <div class="mt-3" data-xmlstock-result aria-live="polite"></div>
+                    </div>
+                    <div class="tab-pane fade" id="xmlstock-wordstat" role="tabpanel" aria-labelledby="xmlstock-wordstat-tab">
+                        <div class="alert alert-primary">
+                            <strong>Поля Яндекс Wordstat</strong>
+                            <ul class="mb-0">
+                                <li><code>Запрос</code> — фраза до 400 символов; не нужен только при выборе <code>regionsTree</code>. <code>Тип данных (pagetype)</code> задаёт результат: <code>words</code> — популярные фразы, <code>history</code> — динамика, <code>regions</code> — статистика по регионам, <code>regionsTree</code> — дерево регионов.</li>
+                                <li><code>Число фраз (groupby)</code> — сколько фраз вернуть (1–2000); используется только для <code>words</code>. <code>Период (period)</code> — интервал группировки истории: день, неделя или месяц; относится к <code>history</code>.</li>
+                                <li><code>Устройства</code> — фильтр устройств: все, desktop, mobile/phone или tablet; можно перечислить несколько через запятую.</li>
+                                <li><code>Дата начала</code> и <code>Дата окончания</code> — границы периода для <code>history</code> в формате ДД.ММ.ГГГГ.</li>
+                                <li><code>Регионы</code> — список ID через запятую (до 100), <code>all</code> для всех; отрицательный ID исключает регион, например <code>-213</code>. <code>Распределение регионов</code> — все элементы, только города или только крупные регионы; параметр применяется к <code>regions</code>.</li>
+                            </ul>
+                        </div>
+                        <form data-xmlstock-tool="yandex_wordstat">
+                            <label class="form-label">Запрос (не нужен для regionsTree)</label><input class="form-control mb-3" data-param="query" maxlength="400">
+                            <div class="row g-3">
+                                <div class="col-md-3"><label class="form-label">Тип данных (pagetype)</label><select class="form-select" data-param="pagetype"><option value="words">words — фразы</option><option value="history">history — динамика</option><option value="regions">regions — регионы</option><option value="regionsTree">regionsTree — дерево регионов</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Число фраз (groupby)</label><input class="form-control" data-param="groupby" type="number" min="1" max="2000"></div>
+                                <div class="col-md-3"><label class="form-label">Период (period)</label><select class="form-select" data-param="period"><option value="">По умолчанию</option><option>day</option><option>week</option><option>month</option></select></div>
+                                <div class="col-md-3"><label class="form-label">Устройства (через запятую)</label><input class="form-control" data-param="device" placeholder="all,desktop,mobile,tablet"></div>
+                                <div class="col-md-3"><label class="form-label">Дата начала</label><input class="form-control" data-param="start" placeholder="ДД.ММ.ГГГГ"></div>
+                                <div class="col-md-3"><label class="form-label">Дата окончания</label><input class="form-control" data-param="end" placeholder="ДД.ММ.ГГГГ"></div>
+                                <div class="col-md-3"><label class="form-label">Регионы (ID через запятую)</label><input class="form-control" data-param="regions" placeholder="213,-2 или all"></div>
+                                <div class="col-md-3"><label class="form-label">Распределение регионов</label><select class="form-select" data-param="distributionby"><option value="">По умолчанию</option><option>all</option><option>cities</option><option>regions</option></select></div>
+                            </div>
+                            <button class="btn btn-primary mt-3" type="submit">Отправить запрос</button>
+                        </form>
+                        <div class="mt-3" data-xmlstock-result aria-live="polite"></div>
+                    </div>
+                </div>
+            </div>
+        </section>
+        <script>
+            const xmlstockTableLimits = { rows: 1000, columns: 40, cellCharacters: 5000 };
+
+            function flattenXmlElement(element, prefix = '', values = {}) {
+                for (const attribute of element.attributes) {
+                    values[`${prefix}@${attribute.name}`] = attribute.value;
+                }
+                const children = [...element.children];
+                if (children.length === 0) {
+                    const value = element.textContent.trim();
+                    if (value) {
+                        const key = prefix || element.tagName;
+                        values[key] = values[key] ? `${values[key]} | ${value}` : value;
+                    }
+                    return values;
+                }
+                const counts = new Map();
+                for (const child of children) {
+                    counts.set(child.tagName, (counts.get(child.tagName) || 0) + 1);
+                }
+                for (const child of children) {
+                    const childName = counts.get(child.tagName) > 1 ? `${child.tagName}[]` : child.tagName;
+                    flattenXmlElement(child, prefix ? `${prefix}.${childName}` : childName, values);
+                }
+                return values;
+            }
+
+            function findRepeatedXmlElements(parent, depth = 0, candidates = []) {
+                const groups = new Map();
+                for (const child of parent.children) {
+                    const group = groups.get(child.tagName) || [];
+                    group.push(child);
+                    groups.set(child.tagName, group);
+                }
+                for (const group of groups.values()) {
+                    if (group.length > 1) candidates.push({ nodes: group, depth });
+                }
+                for (const child of parent.children) findRepeatedXmlElements(child, depth + 1, candidates);
+                return candidates;
+            }
+
+            function flattenJsonObject(value, prefix = '', output = {}) {
+                if (value && typeof value === 'object' && !Array.isArray(value)) {
+                    for (const [key, child] of Object.entries(value)) {
+                        flattenJsonObject(child, prefix ? `${prefix}.${key}` : key, output);
+                    }
+                } else {
+                    output[prefix || 'Значение'] = Array.isArray(value) ? JSON.stringify(value) : String(value ?? '');
+                }
+                return output;
+            }
+
+            function findJsonRecordArrays(value, depth = 0, candidates = []) {
+                if (depth > 12 || !value || typeof value !== 'object') return candidates;
+                if (Array.isArray(value)) {
+                    if (value.length && value.every((item) => item && typeof item === 'object' && !Array.isArray(item))) {
+                        candidates.push(value);
+                    }
+                    for (const item of value) findJsonRecordArrays(item, depth + 1, candidates);
+                } else {
+                    for (const child of Object.values(value)) findJsonRecordArrays(child, depth + 1, candidates);
+                }
+                return candidates;
+            }
+
+            function appendXmlstockTable(container, records) {
+                if (!records.length) return false;
+                const columns = [...new Set(records.flatMap((record) => Object.keys(record)))].slice(0, xmlstockTableLimits.columns);
+                if (!columns.length) return false;
+                const shownRecords = records.slice(0, xmlstockTableLimits.rows);
+                const wrapper = document.createElement('div');
+                wrapper.className = 'table-responsive';
+                const table = document.createElement('table');
+                table.className = 'table table-sm table-striped table-hover table-bordered align-middle';
+                const thead = table.createTHead();
+                const headerRow = thead.insertRow();
+                for (const column of columns) {
+                    const cell = document.createElement('th');
+                    cell.scope = 'col';
+                    cell.textContent = column;
+                    headerRow.append(cell);
+                }
+                const tbody = table.createTBody();
+                for (const record of shownRecords) {
+                    const row = tbody.insertRow();
+                    for (const column of columns) {
+                        const cell = row.insertCell();
+                        const value = String(record[column] ?? '');
+                        cell.textContent = value.length > xmlstockTableLimits.cellCharacters
+                            ? `${value.slice(0, xmlstockTableLimits.cellCharacters)}…` : value;
+                    }
+                }
+                wrapper.append(table);
+                container.append(wrapper);
+                if (records.length > shownRecords.length || new Set(records.flatMap((record) => Object.keys(record))).size > columns.length) {
+                    const note = document.createElement('small');
+                    note.className = 'text-muted';
+                    note.textContent = `Показана часть ответа: ${shownRecords.length} строк, ${columns.length} столбцов.`;
+                    container.append(note);
+                }
+                return true;
+            }
+
+            function renderXmlstockResponse(data, result) {
+                const format = String(data.format || '').toLowerCase();
+                let records = [];
+                try {
+                    if (format === 'json') {
+                        const payload = JSON.parse(data.body);
+                        const arrays = findJsonRecordArrays(payload);
+                        if (arrays.length) {
+                            records = arrays.sort((left, right) => right.length - left.length)[0]
+                                .map((item) => flattenJsonObject(item));
+                        } else if (Array.isArray(payload)) {
+                            records = payload.map((item) => flattenJsonObject(item));
+                        } else if (payload && typeof payload === 'object') {
+                            records = Object.entries(flattenJsonObject(payload)).map(([key, value]) => ({ Параметр: key, Значение: value }));
+                        } else {
+                            records = [{ Значение: String(payload ?? '') }];
+                        }
+                    } else if (format === 'xml') {
+                        const documentXml = new DOMParser().parseFromString(data.body, 'application/xml');
+                        if (documentXml.querySelector('parsererror')) throw new Error('Некорректный XML');
+                        const root = documentXml.documentElement;
+                        const repeated = findRepeatedXmlElements(root).sort((left, right) =>
+                            right.nodes.length - left.nodes.length || right.depth - left.depth)[0];
+                        if (repeated) {
+                            records = repeated.nodes.map((node) => flattenXmlElement(node));
+                        } else {
+                            records = Object.entries(flattenXmlElement(root)).map(([key, value]) => ({ Параметр: key, Значение: value }));
+                        }
+                    }
+                } catch (error) {
+                    records = [];
+                }
+
+                if ((format === 'json' || format === 'xml') && appendXmlstockTable(result, records)) return;
+                const body = document.createElement('pre');
+                body.className = 'border rounded p-3 bg-light';
+                body.style.maxHeight = '32rem';
+                body.style.overflow = 'auto';
+                body.textContent = data.body;
+                result.append(body);
+            }
+
+            document.querySelectorAll('[data-xmlstock-tool]').forEach((form) => {
+                form.addEventListener('submit', async (event) => {
+                    event.preventDefault();
+                    const result = form.closest('.tab-pane')?.querySelector('[data-xmlstock-result]');
+                    const button = form.querySelector('button[type="submit"]');
+                    const params = Object.fromEntries([...form.querySelectorAll('[data-param]')]
+                        .filter((field) => field.value.trim() !== '')
+                        .map((field) => [field.dataset.param, field.value.trim()]));
+                    const logId = crypto.randomUUID();
+                    const logOutput = document.getElementById('live-log-output');
+                    const logStatus = document.getElementById('live-log-status');
+                    logOutput.textContent = '';
+                    logStatus.textContent = 'подключение…';
+                    const stream = new EventSource(`/logs/${logId}`);
+                    stream.onopen = () => { logStatus.textContent = 'выполняется'; };
+                    stream.onmessage = (message) => { logOutput.textContent += JSON.parse(message.data); };
+                    stream.addEventListener('done', () => { logStatus.textContent = 'завершено'; stream.close(); });
+                    result.className = 'alert alert-info mt-3';
+                    result.textContent = 'Запрос отправляется…';
+                    button.disabled = true;
+                    try {
+                        const response = await fetch(`/api/xmlstock/${form.dataset.xmlstockTool}`, {
+                            method: 'POST', headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ params, output_format: form.querySelector('[data-format]')?.value || 'json',
+                                method: form.querySelector('[data-method]')?.value || 'GET', log_id: logId })
+                        });
+                        const data = await response.json().catch(() => ({}));
+                        if (!response.ok) throw new Error(data.detail || 'Не удалось выполнить запрос.');
+                        result.className = 'mt-3';
+                        result.replaceChildren();
+                        const summary = document.createElement('div');
+                        summary.className = data.status_code >= 200 && data.status_code < 300 ? 'alert alert-success' : 'alert alert-warning';
+                        summary.textContent = `HTTP ${data.status_code} · ${data.content_type} · ${data.body.length} символов`;
+                        result.append(summary);
+                        renderXmlstockResponse(data, result);
+                    } catch (error) {
+                        result.className = 'alert alert-danger mt-3';
+                        result.textContent = error instanceof Error ? error.message : 'Не удалось связаться с сервером.';
+                    } finally {
+                        button.disabled = false;
+                        setTimeout(() => { stream.close(); logStatus.textContent = 'завершено'; }, 2000);
+                    }
+                });
+            });
+        </script>
+
         <!-- Карточка XMLRiver: модули доступны отдельно и могут быть объединены сценариями. -->
         <div class="card shadow-sm mt-4">
             <div class="card-header">

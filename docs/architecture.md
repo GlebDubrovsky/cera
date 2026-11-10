@@ -49,6 +49,16 @@
 
 Для прямого вызова из Python используй `modules.openai_api.chat_completion(messages, model=..., temperature=...)`. `OPENAI_BASE_URL` можно настроить на сервер OpenAI или совместимый API. Ключ провайдера хранится только в `.env` на сервере.
 
+### `modules/xmlstock/`
+
+- `service.py:request_xmlstock` — публичный независимый от FastAPI клиент для Яндекс XML Proxy, Яндекс Live, Google XML Search и Яндекс Wordstat; возвращает HTTP-статус, тип содержимого и тело ответа.
+- `validation.py` — фиксированные endpoint, режимы, HTTP-методы и документированные параметры с проверкой форматов и диапазонов.
+- `settings.py` — читает `XMLSTOCK_USER`, `XMLSTOCK_KEY` и `XMLSTOCK_TIMEOUT_SECONDS` из серверного окружения; учётные данные не передаются из браузера и не выводятся в логах.
+- `api/routers/xmlstock.py` — REST-адаптер `POST /api/xmlstock/{tool}`; запускает общий клиент вне event loop. Endpoint следует выставлять только во внутреннюю/доверенную сеть, так как запросы расходуют квоту аккаунта.
+- `templates/dashboard.html` — карточка с вкладками четырёх инструментов; ответ провайдера выводится как текст.
+
+Для прямого вызова из Python используй `modules.xmlstock.request_xmlstock(tool, params, output_format=..., method=...)`. XML Proxy поддерживает GET/POST; остальные инструменты — GET. Wordstat всегда возвращает JSON.
+
 ### `modules/vilmed/`
 
 - `overspam.py:overspam_vilmed` — обработка таблицы overspam.
