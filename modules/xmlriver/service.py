@@ -6,7 +6,7 @@ from typing import Any, Literal, Sequence
 
 from config.config import XMLRIVER_KEY, XMLRIVER_USER
 from modules.xmlriver.registry import get_module
-from modules.xmlriver.settings import SEARCH_SETTINGS, SETTINGS
+from modules.xmlriver.settings import GOOGLE_SEARCH_SETTINGS, SEARCH_SETTINGS, SETTINGS
 
 
 class XMLRiverConfigurationError(RuntimeError):
@@ -33,7 +33,12 @@ def run_module(
 
     if module_id != "frequency" and frequency_mode != "base":
         raise ValueError("Режим частотности доступен только для модуля frequency.")
-    settings = SEARCH_SETTINGS if module_id == "serp" else SETTINGS
+    if module_id == "serp":
+        settings = SEARCH_SETTINGS
+    elif module_id == "google_serp":
+        settings = GOOGLE_SEARCH_SETTINGS
+    else:
+        settings = SETTINGS
     arguments: dict[str, Any] = {
         "user_id": XMLRIVER_USER,
         "api_key": XMLRIVER_KEY,
@@ -41,7 +46,7 @@ def run_module(
     }
     if module_id == "frequency" and frequency_mode != "base":
         arguments["mode"] = frequency_mode
-    if module_id == "serp":
+    if module_id in {"serp", "google_serp"}:
         if top_n not in {10, 20, 30}:
             raise ValueError("Количество результатов должно быть 10, 20 или 30.")
         arguments["top_n"] = top_n

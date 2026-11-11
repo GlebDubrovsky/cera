@@ -51,7 +51,7 @@ def _rows_for_result(module_id: str, result: Mapping[str, Any]) -> Iterable[list
             else:
                 popular_phrase, value = item, ""
             yield [phrase, popular_phrase, value, error]
-    elif module_id == "serp":
+    elif module_id in {"serp", "google_serp"}:
         search_results = result.get("results") or []
         if not search_results:
             yield [phrase, "", "", "", error]
@@ -67,6 +67,7 @@ def write_results_xlsx(path: str | Path, module_id: str, results: Sequence[Mappi
         "frequency": ["phrase", "total_value", "error"],
         "popular": ["phrase", "popular_phrase", "value", "error"],
         "serp": ["phrase", "position", "url", "title", "snippet", "error"],
+        "google_serp": ["phrase", "position", "url", "title", "snippet", "error"],
     }
     if module_id not in headers:
         raise ValueError("Неизвестный модуль XMLRiver для XLSX-экспорта.")

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
 
 from modules.xmlriver.xmlriver_frequency import fetch_frequencies
+from modules.xmlriver.xmlriver_google_serp import fetch_google_search_results
 from modules.xmlriver.xmlriver_popular import fetch_popular_queries
 from modules.xmlriver.xmlriver_serp import fetch_search_results
 
@@ -26,7 +27,8 @@ class ModuleSpec:
 MODULES: dict[str, ModuleSpec] = {
     "frequency": ModuleSpec("frequency", "Сбор частот", fetch_frequencies, {}),
     "popular": ModuleSpec("popular", "Сбор фраз", fetch_popular_queries, {}),
-    "serp": ModuleSpec("serp", "ТОП конкурентов", fetch_search_results, {}),
+    "serp": ModuleSpec("serp", "ТОП Yandex", fetch_search_results, {}),
+    "google_serp": ModuleSpec("google_serp", "ТОП Google", fetch_google_search_results, {}),
 }
 
 

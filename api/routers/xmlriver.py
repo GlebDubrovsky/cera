@@ -6,9 +6,11 @@ import asyncio
 import uuid
 from html import escape
 from pathlib import Path
+from typing import Any, Literal
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
+from pydantic import BaseModel, ConfigDict, Field
 
 from modules.xmlriver.export import append_phrasal_values_xlsx, write_results_xlsx
 from shared.log_stream import run_with_log_capture
@@ -20,6 +22,15 @@ from modules.xmlriver.service import XMLRiverConfigurationError, run_module
 router = APIRouter()
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+
+
+class GoogleSERPRequest(BaseModel):
+    """JSON-контракт запуска Google SERP для внутренних клиентов и сценариев."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    phrases: list[str] = Field(min_length=1, max_length=1000)
+    top_n: Literal[10, 20, 30] = 10
 
 
 def _run_job(
@@ -142,6 +153,37 @@ async def run_serp(
     log_id: str = Form(""),
 ) -> HTMLResponse:
     return await _submit("serp", phrases_text, phrases_file, log_id, top_n)
+
+
+@router.post("/xmlriver/google_serp", response_class=HTMLResponse)
+async def run_google_serp(
+    phrases_text: str = Form(""),
+    phrases_file: UploadFile | None = File(None),
+    top_n: int = Form(10),
+    log_id: str = Form(""),
+) -> HTMLResponse:
+    return await _submit("google_serp", phrases_text, phrases_file, log_id, top_n)
+
+
+@router.post("/api/xmlriver/google_serp")
+async def run_google_serp_api(request: GoogleSERPRequest) -> dict[str, Any]:
+    """Возвращает результаты Google SERP в JSON через тот же публичный сервис."""
+    try:
+        results = await asyncio.to_thread(
+            run_with_log_capture,
+            "",
+            run_module,
+            "google_serp",
+            request.phrases,
+            top_n=request.top_n,
+        )
+    except XMLRiverConfigurationError:
+        raise HTTPException(status_code=503, detail="XMLRiver не настроен на сервере.") from None
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from None
+    except Exception:
+        raise HTTPException(status_code=502, detail="Не удалось получить результаты Google через XMLRiver.") from None
+    return {"module": "google_serp", "results": results}
 
 
 @router.get("/download/xmlriver/{module_id}/{request_id}")

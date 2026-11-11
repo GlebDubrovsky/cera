@@ -659,7 +659,12 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="xmlriver-serp-tab" data-bs-toggle="tab"
                             data-bs-target="#xmlriver-serp" type="button" role="tab" aria-controls="xmlriver-serp"
-                            aria-selected="false">ТОП конкурентов</button>
+                            aria-selected="false">ТОП Yandex</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="xmlriver-google-serp-tab" data-bs-toggle="tab"
+                            data-bs-target="#xmlriver-google-serp" type="button" role="tab" aria-controls="xmlriver-google-serp"
+                            aria-selected="false">ТОП Google</button>
                     </li>
                 </ul>
             </div>
@@ -722,9 +727,25 @@
                             <select class="form-select mb-3" id="xmlriver-serp-top-n" name="top_n">
                                 <option value="10">ТОП 10</option><option value="20">ТОП 20</option><option value="30">ТОП 30</option>
                             </select>
-                            <button class="btn btn-primary" type="submit">Собрать ТОП конкурентов <span class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status"></span></button>
+                            <button class="btn btn-primary" type="submit">Собрать ТОП Yandex <span class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status"></span></button>
                         </form>
                         <div id="xmlriver-serp-result" class="mt-3"></div>
+                    </div>
+                    <div class="tab-pane fade" id="xmlriver-google-serp" role="tabpanel" aria-labelledby="xmlriver-google-serp-tab">
+                        <div class="alert alert-primary">Вставь фразы по одной на строку или загрузи XLSX с заголовком столбца <code>phrase</code>. Выбери только один способ ввода.</div>
+                        <form hx-post="/xmlriver/google_serp" hx-target="#xmlriver-google-serp-result" hx-swap="innerHTML"
+                            hx-encoding="multipart/form-data" enctype="multipart/form-data">
+                            <label class="form-label" for="xmlriver-google-serp-text">Список фраз</label>
+                            <textarea class="form-control mb-3" id="xmlriver-google-serp-text" name="phrases_text" rows="4" placeholder="Фраза 1&#10;Фраза 2"></textarea>
+                            <label class="form-label" for="xmlriver-google-serp-file">Или файл XLSX</label>
+                            <input class="form-control mb-3" id="xmlriver-google-serp-file" type="file" name="phrases_file" accept=".xlsx">
+                            <label class="form-label" for="xmlriver-google-serp-top-n">Количество результатов на фразу</label>
+                            <select class="form-select mb-3" id="xmlriver-google-serp-top-n" name="top_n">
+                                <option value="10">ТОП 10</option><option value="20">ТОП 20</option><option value="30">ТОП 30</option>
+                            </select>
+                            <button class="btn btn-primary" type="submit">Собрать ТОП Google <span class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status"></span></button>
+                        </form>
+                        <div id="xmlriver-google-serp-result" class="mt-3"></div>
                     </div>
                 </div>
             </div>
@@ -891,6 +912,7 @@
                 '/xmlriver/frequency',
                 '/xmlriver/popular',
                 '/xmlriver/serp',
+                '/xmlriver/google_serp',
                 '/relevance-analyzer',
                 '/auto-landings/meta-tags-news'
             ]);

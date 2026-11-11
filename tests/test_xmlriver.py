@@ -15,10 +15,11 @@ from openpyxl import Workbook, load_workbook
 
 from api.routers import xmlriver as web
 from modules.xmlriver.export import append_phrasal_values_xlsx, write_results_xlsx
-from shared.phrase_import import PhraseInputError, parse_phrases
 from modules.xmlriver.registry import ModuleSpec
 from modules.xmlriver.service import run_module
 from modules.xmlriver.xmlriver_frequency import fetch_frequencies
+from modules.xmlriver.xmlriver_google_serp import fetch_google_search_results
+from shared.phrase_import import PhraseInputError, parse_phrases
 
 
 def make_phrase_xlsx() -> bytes:
@@ -80,6 +81,46 @@ class ModuleServiceTests(unittest.TestCase):
         get_module.assert_called_once_with("frequency")
 
 
+class GoogleSERPTests(unittest.TestCase):
+    def test_dispatch_uses_google_settings_and_top_n(self) -> None:
+        module_function = Mock(return_value=[{"phrase": "поиск", "results": [], "error": None}])
+        module_spec = ModuleSpec("google_serp", "ТОП Google", module_function, {})
+        with patch("modules.xmlriver.service.get_module", return_value=module_spec), \
+                patch("modules.xmlriver.service.XMLRIVER_USER", "configured-user"), \
+                patch("modules.xmlriver.service.XMLRIVER_KEY", "configured-key"), \
+                patch("modules.xmlriver.service.GOOGLE_SEARCH_SETTINGS", {"device": "mobile"}), \
+                redirect_stdout(StringIO()):
+            results = run_module("google_serp", ["поиск"], top_n=20)
+
+        self.assertEqual(results[0]["phrase"], "поиск")
+        module_function.assert_called_once_with(
+            ["поиск"], user_id="configured-user", api_key="configured-key",
+            settings={"device": "mobile"}, top_n=20,
+        )
+
+    def test_pagination_uses_google_page_numbers_starting_at_one(self) -> None:
+        def make_page(first_position: int) -> str:
+            documents = "".join(
+                f"<doc><contenttype>organic</contenttype><url>https://example.test/{position}</url>"
+                f"<title>Result {position}</title><passages><passage>Snippet {position}</passage></passages></doc>"
+                for position in range(first_position, first_position + 10)
+            )
+            return f"<root><group>{documents}</group></root>"
+
+        with patch(
+            "modules.xmlriver.xmlriver_google_serp._request_page",
+            side_effect=[make_page(1), make_page(11)],
+        ) as request, redirect_stdout(StringIO()):
+            results = fetch_google_search_results(
+                ["query"], user_id="user", api_key="key", top_n=20, retries=0
+            )
+
+        self.assertEqual([call.args[1] for call in request.call_args_list], [1, 2])
+        self.assertEqual(len(results[0]["results"]), 20)
+        self.assertEqual(results[0]["results"][0]["position"], "1")
+        self.assertEqual(results[0]["results"][-1]["position"], "20")
+
+
 class FrequencyModeTests(unittest.TestCase):
     def test_both_mode_sends_original_and_quoted_queries(self) -> None:
         with patch("modules.xmlriver.xmlriver_frequency.fetch_frequency", side_effect=[{"totalValue": 21}, {"totalValue": 8}]) as request, \
@@ -107,6 +148,7 @@ class XLSXExportTests(unittest.TestCase):
             "frequency": ([{"phrase": "частота", "total_value": 21, "error": None}], ["phrase", "total_value", "error"]),
             "popular": ([{"phrase": "исходная", "popular": [{"isAssociations": False, "value": "8", "text": "популярная"}], "error": None}], ["phrase", "popular_phrase", "value", "error"]),
             "serp": ([{"phrase": "поиск", "results": [{"position": "1", "url": "https://example.test", "title": "Заголовок", "snippet": "Описание"}], "error": None}], ["phrase", "position", "url", "title", "snippet", "error"]),
+            "google_serp": ([{"phrase": "поиск", "results": [{"position": "1", "url": "https://google.example.test", "title": "Google", "snippet": "Описание"}], "error": None}], ["phrase", "position", "url", "title", "snippet", "error"]),
         }
         with tempfile.TemporaryDirectory() as directory:
             for module_id, (results, expected_headers) in cases.items():
@@ -160,6 +202,17 @@ class XLSXExportTests(unittest.TestCase):
 
 @unittest.skipIf(web is None, "Для HTTP-тестов установи зависимости из requirements.txt, включая python-multipart.")
 class XMLRiverRouteTests(unittest.IsolatedAsyncioTestCase):
+    async def test_google_json_api_dispatches_through_shared_service(self) -> None:
+        expected_results = [{"phrase": "query", "results": [], "error": None}]
+        request = web.GoogleSERPRequest(phrases=["query"], top_n=20)
+        with patch("api.routers.xmlriver.run_with_log_capture", return_value=expected_results) as runner:
+            response = await web.run_google_serp_api(request)
+
+        self.assertEqual(response, {"module": "google_serp", "results": expected_results})
+        runner.assert_called_once_with(
+            "", web.run_module, "google_serp", ["query"], top_n=20
+        )
+
     async def test_frequency_route_returns_downloadable_xlsx(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

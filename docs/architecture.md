@@ -21,14 +21,14 @@
 
 ### `modules/xmlriver/`
 
-- `service.py:run_module` — общий программный запуск XMLRiver-возможности; проверяет входные данные и конфигурацию, затем вызывает функцию из реестра.
-- `registry.py` — сопоставляет идентификаторы `frequency`, `popular`, `serp` с функциями сбора данных.
-- `xmlriver_frequency.py`, `xmlriver_popular.py`, `xmlriver_serp.py` — реализация отдельных операций с XMLRiver.
-- `settings.py` — настройки именно XMLRiver.
+- `service.py:run_module` — общий программный запуск XMLRiver-возможности; проверяет входные данные и конфигурацию, затем вызывает функцию из реестра. Для TOP выдачи доступны ID `serp` (Yandex) и `google_serp` (Google).
+- `registry.py` — сопоставляет идентификаторы `frequency`, `popular`, `serp`, `google_serp` с функциями сбора данных.
+- `xmlriver_frequency.py`, `xmlriver_popular.py`, `xmlriver_serp.py`, `xmlriver_google_serp.py` — реализации отдельных операций с XMLRiver.
+- `settings.py` — настройки именно XMLRiver, включая независимые параметры поисковой выдачи Yandex и Google.
 - `export.py` — формирование XLSX-результатов.
-- `api/routers/xmlriver.py` — HTTP-адаптер: принимает пользовательский ввод, вызывает сервис, возвращает результат или файл.
+- `api/routers/xmlriver.py` — HTTP-адаптер: UI-маршруты принимают фразы и возвращают XLSX; `POST /api/xmlriver/google_serp` принимает JSON `{\"phrases\": [...], \"top_n\": 10|20|30}` и возвращает результаты.
 
-Для прямого вызова из другого Python-кода используй `modules.xmlriver.service.run_module`, а не HTTP-запрос к собственному приложению.
+Для прямого вызова из другого Python-кода используй `modules.xmlriver.service.run_module`, например `run_module("google_serp", phrases, top_n=20)`, а не HTTP-запрос к собственному приложению.
 
 ### `modules/relevance_analyzer/`
 

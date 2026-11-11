@@ -25,6 +25,12 @@ SEARCH_SETTINGS = {
     "filter": "",       # 1 — скрывать похожие результаты; пусто — настройка сервиса
 }
 
+# Параметры Google независимы от Яндекса; lr ограничивает язык результатов.
+GOOGLE_SEARCH_SETTINGS = {
+    "device": "desktop",
+    "lr": "RU",
+}
+
 # Файлы результатов разных режимов.
 SERP_OUTPUT_FILE = Path(__file__).with_name("search_results.csv")
 POPULAR_OUTPUT_FILE = Path(__file__).with_name("popular_queries.csv")
