@@ -6,6 +6,12 @@ load_dotenv()
 XMLRIVER_USER = os.getenv("XMLRIVER_USER", "").strip()
 XMLRIVER_KEY = os.getenv("XMLRIVER_KEY", "").strip()
 
+
+def get_database_url() -> str | None:
+    """Читает адрес базы из окружения, не выводя его в журналы."""
+    return os.getenv("DATABASE_URL", "").strip() or None
+
+
 HEADERS = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',

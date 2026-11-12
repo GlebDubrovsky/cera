@@ -61,9 +61,13 @@
 
 ### `modules/vilmed/`
 
-- `overspam.py:overspam_vilmed` — обработка таблицы overspam.
-- `category_menu.py:update_cat_menu_vilmed` — обновление листа меню категорий.
-- `api/routers/vilmed.py` — HTTP-адаптер для операций Vilmed.
+- `overspam.py:overspam_vilmed` — обрабатывает загруженный XLSX и ищет совпадения по справочнику PostgreSQL; возвращает DataFrame для XLSX-выгрузки.
+- `repository.py` — импортирует лист `Готовый список ID` из `worksheets/work_vilmed.xlsx` и читает `vilmed_reference_categories`; по умолчанию импорт разрешён только в пустую таблицу, явная замена выполняется атомарно.
+- `import_reference.py` — отдельная CLI-команда для импорта справочного листа; при старте приложения не запускается.
+- `import_workbook.py` — переносит пять остальных листов книги в отдельные таблицы; каждую таблицу заполняет транзакционно, а уже непустые пропускает без замены данных.
+- `migrations/versions/0001_*.py` создаёт таблицу справочника, а `0002_*.py` — отдельные таблицы для `Плитка тегов`, `categories_id`, `bar_tags`, `menu_categories` и `all_products`.
+- `category_menu.py:update_cat_menu_vilmed` — бизнес-операция пока продолжает обновлять рабочий XLSX; перенос листа в БД не переводит эту операцию автоматически.
+- `api/routers/vilmed.py` — HTTP-адаптер для операций Vilmed; передаёт общую БД-фабрику в `overspam_vilmed`.
 
 ### `modules/site_tools/`
 
@@ -82,6 +86,7 @@
 
 ## Общие компоненты
 
+- `shared/database.py:create_database_engine`, `check_database_connection` — общие SQLAlchemy-инструменты подключения; URL передаётся только из серверного окружения, а движок создаётся и закрывается в lifespan приложения.
 - `shared/phrase_import.py:parse_phrases` — разбор фраз из текста или XLSX.
 - `shared/temp_storage.py:manage_temp_dir` — создание, получение и удаление временных каталогов.
 - `shared/log_stream.py:run_with_log_capture`, `stream_session` — захват вывода задачи и передача логов через SSE.
@@ -104,6 +109,8 @@
 Для XMLRiver конкретная цепочка выглядит так: `api/routers/xmlriver.py` → `modules/xmlriver/service.py:run_module` → `modules/xmlriver/registry.py` → функция операции в `modules/xmlriver/` → `modules/xmlriver/export.py`.
 
 Для NEWS-метатегов цепочка выглядит так: `api/routers/auto_news_meta_tags.py` → `scenarios/auto_news_meta_tags.py:run_auto_news_meta_tags` → `shared.page_content` → `shared.prompt_templates` → `modules.openai_api.chat_completion` → ZIP с отдельными TXT-файлами.
+
+Для Vilmed приложение читает `vilmed_reference_categories` в `overspam`; остальные пять листов вручную переносятся командой `python -m modules.vilmed.import_workbook --target-database ИМЯ_БАЗЫ` в независимые таблицы. Все шесть листов хранятся в PostgreSQL, но операции меню и остальные XLSX-сценарии пока продолжают работать с книгой Excel.
 
 ## Как добавлять функциональность
 
@@ -128,8 +135,21 @@
 3. Добавь тесты, подменяя внешние API и проверяя передачу данных между этапами.
 4. Добавляй сценарий в реестр только если реестр реально используется вызывающим кодом; пустой `scenarios/registry.py` сам по себе не является работающим механизмом запуска.
 
-## Проверки
+## Проверки и первый запуск PostgreSQL
 
 - Автоматические тесты: `python -m unittest discover -s tests -p 'test*.py'`.
 - `tests/run_test.py` — ручной XMLRiver-запуск с внешним API, а не автоматический тест. Не запускать его без явной необходимости и корректной конфигурации окружения.
 - После изменения публичных точек входа обновляй эту карту и тесты вместе с кодом.
+- Зависимости PostgreSQL добавлены в `requirements.txt`; пароль и полный `DATABASE_URL` хранятся только в окружении процесса/контейнера, не в репозитории. Не публикуй порт PostgreSQL в интернет.
+- До миграции вручную проверь, что `DATABASE_URL` указывает на нужную базу. Если приложение запущено в другом контейнере, оба контейнера должны быть в общей Docker-сети; имя хоста `my_db` работает только при наличии такого DNS-алиаса в этой сети.
+
+Для импорта книги Vilmed:
+
+1. Установи зависимости проекта и задай `DATABASE_URL` в окружении приложения.
+2. Проверь целевую базу через настроенное подключение; не удаляй и не пересоздавай базу.
+3. Выполни `alembic current`, затем `alembic upgrade head`. Миграции добавляют таблицу `vilmed_reference_categories` и пять независимых таблиц для остальных листов.
+4. Импортируй справочник командой `python -m modules.vilmed.import_reference --target-database ИМЯ_БАЗЫ`, если он ещё не загружен.
+5. Импортируй остальные листы командой `python -m modules.vilmed.import_workbook --target-database ИМЯ_БАЗЫ`. Импортёр проверяет целевую базу, проверяет заголовки книги, вставляет только в пустые таблицы и пропускает уже заполненные.
+6. После импорта сверь `COUNT(*)` каждой таблицы с количеством строк данных в соответствующем листе. Для повторной загрузки сначала выясни, почему таблица уже заполнена; автоматического удаления или замены данных нет.
+
+`DATABASE_URL` с PostgreSQL в Docker должен использовать адрес, доступный именно контейнеру приложения, а не DBeaver. Передавай URL только через переменные окружения; приложение не выполняет миграции или импорт автоматически при старте.

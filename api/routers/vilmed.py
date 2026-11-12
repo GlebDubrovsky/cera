@@ -1,4 +1,4 @@
-"""HTTP routes for Vilmed-specific processing."""
+"""HTTP-маршруты для операций сервиса Vilmed."""
 
 import asyncio
 import os
@@ -6,7 +6,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from html import escape
 
@@ -22,11 +22,19 @@ XLSX_MEDIA_TYPE = "application/vnd.openxmlformats-officedocument.spreadsheetml.s
 
 @router.post("/overspam", response_class=HTMLResponse)
 async def overspam_htmx(
+    request: Request,
     file: UploadFile = File(...),
     log_id: str = Form(""),
 ) -> HTMLResponse:
     if not file.filename or not file.filename.endswith(".xlsx"):
         return HTMLResponse('<div class="alert alert-danger">Требуется файл .xlsx</div>', status_code=400)
+
+    engine = getattr(request.app.state, "database_engine", None)
+    if engine is None:
+        return HTMLResponse(
+            '<div class="alert alert-danger">PostgreSQL не настроен: задайте DATABASE_URL.</div>',
+            status_code=503,
+        )
 
     request_id = str(uuid.uuid4())
     temp_dir = manage_temp_dir(request_id, "create", "overspam_vilmed")
@@ -42,6 +50,7 @@ async def overspam_htmx(
             overspam_vilmed,
             file_path,
             request_id,
+            engine,
         )
         if result_df is None or result_df.empty:
             manage_temp_dir(request_id, "delete", "overspam_vilmed")
@@ -52,10 +61,10 @@ async def overspam_htmx(
 
         result_path = os.path.join(temp_dir, "result.xlsx")
         result_df.to_excel(result_path, index=False)
-    except Exception as error:
+    except Exception:
         manage_temp_dir(request_id, "delete", "overspam_vilmed")
         return HTMLResponse(
-            f'<div class="alert alert-danger">Ошибка при обработке: {escape(str(error))}</div>',
+            '<div class="alert alert-danger">Ошибка при обработке результата.</div>',
             status_code=500,
         )
 
@@ -116,10 +125,10 @@ async def update_cat_menu_htmx(
             file_path,
             str(target_file_path),
         )
-    except Exception as error:
+    except Exception:
         manage_temp_dir(request_id, "delete", "update_cat_menu")
         return HTMLResponse(
-            f'<div class="alert alert-danger">Ошибка при обновлении файла: {escape(str(error))}</div>',
+            '<div class="alert alert-danger">Ошибка при обновлении файла.</div>',
             status_code=500,
         )
 

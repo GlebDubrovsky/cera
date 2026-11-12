@@ -1,104 +1,117 @@
-import pandas as pd
-import re
-from pymorphy3 import MorphAnalyzer
-import os
+"""Обработка overspam Vilmed с использованием справочника PostgreSQL."""
 
-def overspam_vilmed(input_file, chat_id):
+from __future__ import annotations
+
+import os
+import re
+from pathlib import Path
+
+import pandas as pd
+from pymorphy3 import MorphAnalyzer
+from sqlalchemy import Engine
+
+from modules.vilmed.repository import list_vilmed_reference_categories
+
+
+def overspam_vilmed(input_file: str | Path, chat_id: str, engine: Engine) -> pd.DataFrame | None:
+    """Сопоставляет слова релевантности с названиями Vilmed из PostgreSQL.
+
+    Загруженная книга содержит условия обработки, а справочник берётся из базы.
+    Функция возвращает DataFrame с прежними русскими названиями столбцов, чтобы
+    HTTP-адаптер мог сохранить результат в XLSX без изменения формата.
+    """
+    print("[VILMED][OVERSPAM][START] Начата обработка входного файла", flush=True)
     try:
-        # Инициализация морфологического анализатора
+        if not os.path.isfile(input_file):
+            print("[VILMED][INPUT][ERROR] Входной файл не найден", flush=True)
+            return None
+
         morph = MorphAnalyzer()
 
-        prefix = "temp_for_"
-        folder_name = prefix + str(chat_id)
-
-        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        temp_dir = os.path.join(base_dir, "temp_files", folder_name)
-        work_sheet_url = os.path.join(base_dir, "worksheets/work_vilmed.xlsx")
-
-        # Проверяем, что файл существует
-        if not os.path.exists(input_file):
-            print(f"Файл {input_file} не найден.")
-            return None
-
-        # Чтение файла релевантности
-        relevance_df = pd.read_excel(input_file, header=1)
-        
-        # Функция для приведения слова к нормальной форме
-        def normalize_word(word):
+        def normalize_word(word: object) -> str:
+            normalized_input = str(word).strip().lower()
+            if not normalized_input:
+                return ""
             try:
-                parsed_word = morph.parse(word)[0]
-                return parsed_word.normal_form
-            except:
-                return str(word).strip().lower()
+                return morph.parse(normalized_input)[0].normal_form
+            except (IndexError, TypeError, AttributeError):
+                return normalized_input
 
-        # Обработка DataFrame релевантности
-        relevance_df['Удалить'] = relevance_df['Удалить'].apply(lambda x: int(str(x).split('-')[-1]))
-        relevance_df = relevance_df[relevance_df['Удалить'] != 0]
-        
-        relevance_words = {}
-        for index, row in relevance_df.iterrows():
-            word = str(row['Слово']).strip().lower()
-            normalized_word = normalize_word(word)
-            max_count = row['Удалить']
-            relevance_words[normalized_word] = max_count
+        # Этап 1: читаем книгу с условиями релевантности и лимитами совпадений.
+        relevance_df = pd.read_excel(input_file, header=1)
+        required_columns = {"Удалить", "Слово"}
+        if not required_columns.issubset(relevance_df.columns):
+            raise ValueError("Входная таблица не содержит обязательные столбцы")
 
-        # Загрузка данных из "work_vilmed.xlsx"
-        if not os.path.exists(work_sheet_url):
-            print(f"Файл {work_sheet_url} не найден.")
+        relevance_df["Удалить"] = relevance_df["Удалить"].apply(
+            lambda value: int(str(value).split("-")[-1])
+        )
+        relevance_df = relevance_df[relevance_df["Удалить"] != 0]
+        relevance_words: dict[str, int] = {}
+        for _, row in relevance_df.iterrows():
+            word = normalize_word(row["Слово"])
+            if word:
+                relevance_words[word] = int(row["Удалить"])
+        print(
+            f"[VILMED][INPUT][SUCCESS] Загружено условий: {len(relevance_words)}",
+            flush=True,
+        )
+
+        # Этап 2: читаем подготовленный справочник через репозиторий модуля.
+        reference_df = list_vilmed_reference_categories(engine)
+        if reference_df.empty:
+            print("[VILMED][DATABASE][ERROR] Справочная таблица пуста", flush=True)
             return None
-            
-        work_df = pd.read_excel(work_sheet_url, sheet_name='Готовый список ID')
-        work_df = work_df[['Название', 'ID раздела']].dropna()
+        print(
+            f"[VILMED][DATABASE][SUCCESS] Прочитано записей: {len(reference_df)}",
+            flush=True,
+        )
 
-        # Обработка названий
-        processed_data = []
-        for index, row in work_df.iterrows():
-            title = str(row['Название'])
-            # Удаление знаков препинания и приведение к нижнему регистру
-            clean_title = re.sub(r'[^\w\s]', ' ', title).lower()
-            # Разделение на слова и нормализация
-            words = clean_title.split()
-            normalized_words = [normalize_word(word) for word in words if word.strip()]
-            processed_data.append({
-                'id': row['ID раздела'],
-                'title': title,
-                'words': set(normalized_words)  # Используем множество для быстрого поиска
-            })
+        # Этап 3: нормализуем названия заранее, чтобы не повторять морфологический разбор.
+        processed_data: list[dict[str, object]] = []
+        for _, row in reference_df.iterrows():
+            title = str(row["Название"])
+            clean_title = re.sub(r"[^\w\s]", " ", title).lower()
+            normalized_words = {
+                normalized_word
+                for token in clean_title.split()
+                if (normalized_word := normalize_word(token))
+            }
+            processed_data.append(
+                {
+                    "id": row["ID раздела"],
+                    "title": title,
+                    "words": normalized_words,
+                }
+            )
 
-        # Поиск совпадений и формирование результатов
-        results = []
+        # Этап 4: сохраняем прежний лимит первого совпадения и формат XLSX.
+        results: list[dict[str, object]] = []
         for word, max_count in relevance_words.items():
-            matched_entries = []
+            matched_count = 0
             for item in processed_data:
-                if word in item['words']:
-                    matched_entries.append(item)
-                    if len(matched_entries) >= max_count:
-                        break  # Прекращаем поиск при достижении лимита
-            if matched_entries:
-                for entry in matched_entries:
-                    results.append({
-                        'Название': entry['title'],
-                        'ID': entry['id']
-                    })
+                if word in item["words"]:
+                    results.append({"Название": item["title"], "ID": item["id"]})
+                    matched_count += 1
+                    if matched_count >= max_count:
+                        break
 
-        # Создание DataFrame для результата
-        result_df = pd.DataFrame(results)
-
-        # Удаление дубликатов (если один ID попал под несколько слов)
+        result_df = pd.DataFrame(results, columns=["Название", "ID"])
         if not result_df.empty:
-            result_df = result_df.drop_duplicates(subset=['ID'])
-            
-            # Сохраняем результат во временную папку (опционально)
-            if temp_dir and os.path.exists(temp_dir):
-                output_file_url = os.path.join(temp_dir, "overspam_vilmed_list.xlsx")
-                result_df.to_excel(output_file_url, index=False)
-                print(f"Результат сохранен в {output_file_url}")
-        
-        print("Готово! Функция overspam_vilmed отработала успешно!")
+            result_df = result_df.drop_duplicates(subset=["ID"])
+
+        temp_dir = Path(__file__).resolve().parents[2] / "temp_files" / f"temp_for_{chat_id}"
+        if not result_df.empty and temp_dir.is_dir():
+            result_df.to_excel(temp_dir / "overspam_vilmed_list.xlsx", index=False)
+
+        print(
+            f"[VILMED][OVERSPAM][SUCCESS] Сформировано строк: {len(result_df)}",
+            flush=True,
+        )
         return result_df
-        
-    except Exception as e:
-        print(f"Ошибка при обработке файла: {e}")
-        import traceback
-        traceback.print_exc()
+    except Exception:
+        print(
+            "[VILMED][OVERSPAM][ERROR] Обработка завершилась ошибкой",
+            flush=True,
+        )
         return None
