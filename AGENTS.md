@@ -38,3 +38,15 @@
 
 - Keep progress output in the exact `[MODULE][STAGE][STATUS] Message` format with stable uppercase identifiers and `flush=True`; do not use emoji as status markers.
 - Prefer counts and processing stage over raw input. Do not print phrase contents or URLs when counts and a stage identifier are sufficient. Include start, useful per-item/page progress, success or failure, and final totals as appropriate.
+
+## Direct database operations
+
+- For requests to directly modify database data or schema outside application development (for example, cleaning data or adding/removing columns), create a temporary runnable file for the operation rather than leaving a one-off script in the project.
+- After the operation completes successfully, delete the temporary file so it does not accumulate in the project. If the operation fails, report the failure and do not claim successful cleanup.
+
+## Vilmed category product migration
+
+- When asked to migrate a product category, select rows with the exact requested `category` value from `vilmed_products` and copy them to `vilmed_description_products`.
+- Copy `product_name`, `symbol_code`, `description`, `product_id`, `sku`, `package`, `specifications`, `keyword`, and `category`. Set `url` to `https://vilmed.ru/product/{symbol_code}/`, `desc_status` to `exist` for a non-empty `description` or `missing` otherwise, and `mark_in_table` to boolean `FALSE` for new rows.
+- Make the transfer repeatable by skipping products already present by `product_id`; validate required keys and columns, do the changes in one transaction, and verify inserted values and category coverage before commit.
+- Use a temporary runnable file for each direct data migration and delete it after success. For future category requests, follow this process with the requested category unless the user specifies different rules.

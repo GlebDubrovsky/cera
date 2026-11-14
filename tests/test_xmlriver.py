@@ -80,6 +80,22 @@ class ModuleServiceTests(unittest.TestCase):
                 run_module("frequency", [""])
         get_module.assert_called_once_with("frequency")
 
+    def test_serp_defaults_to_top_twenty(self) -> None:
+        module_function = Mock(return_value=[{"phrase": "поиск", "results": [], "error": None}])
+        module_spec = ModuleSpec("serp", "ТОП Yandex", module_function, {})
+        with patch("modules.xmlriver.service.get_module", return_value=module_spec), \
+                patch("modules.xmlriver.service.XMLRIVER_USER", "configured-user"), \
+                patch("modules.xmlriver.service.XMLRIVER_KEY", "configured-key"), \
+                patch("modules.xmlriver.service.SEARCH_SETTINGS", {"device": "desktop"}), \
+                redirect_stdout(StringIO()):
+            results = run_module("serp", ["поиск"])
+
+        self.assertEqual(results[0]["phrase"], "поиск")
+        module_function.assert_called_once_with(
+            ["поиск"], user_id="configured-user", api_key="configured-key",
+            settings={"device": "desktop"}, top_n=20,
+        )
+
 
 class GoogleSERPTests(unittest.TestCase):
     def test_dispatch_uses_google_settings_and_top_n(self) -> None:

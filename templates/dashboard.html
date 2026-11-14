@@ -725,7 +725,7 @@
                             <input class="form-control mb-3" id="xmlriver-serp-file" type="file" name="phrases_file" accept=".xlsx">
                             <label class="form-label" for="xmlriver-serp-top-n">Количество результатов на фразу</label>
                             <select class="form-select mb-3" id="xmlriver-serp-top-n" name="top_n">
-                                <option value="10">ТОП 10</option><option value="20">ТОП 20</option><option value="30">ТОП 30</option>
+                                <option value="10">ТОП 10</option><option value="20" selected>ТОП 20</option><option value="30">ТОП 30</option>
                             </select>
                             <button class="btn btn-primary" type="submit">Собрать ТОП Yandex <span class="htmx-indicator spinner-border spinner-border-sm ms-2" role="status"></span></button>
                         </form>
@@ -838,6 +838,169 @@
             </div>
         </div>
 
+        <div class="card shadow-sm mt-4" id="vilmed-product-descriptions-card">
+            <div class="card-header">
+                <h5 class="mb-2">Описание товаров vilmed</h5>
+                <ul class="nav nav-tabs card-header-tabs" id="vilmed-product-description-tabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="vilmed-serp-tab" data-bs-toggle="tab"
+                            data-bs-target="#vilmed-serp-pane" type="button" role="tab"
+                            aria-controls="vilmed-serp-pane" aria-selected="true">Поиск serp</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="vilmed-relevance-tab" data-bs-toggle="tab"
+                            data-bs-target="#vilmed-relevance-pane" type="button" role="tab"
+                            aria-controls="vilmed-relevance-pane" aria-selected="false">Стартовая релевантность</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="vilmed-select-words-tab" data-bs-toggle="tab"
+                            data-bs-target="#vilmed-select-words-pane" type="button" role="tab"
+                            aria-controls="vilmed-select-words-pane" aria-selected="false">Отбор важных слов</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="vilmed-get-html-tab" data-bs-toggle="tab"
+                            data-bs-target="#vilmed-get-html-pane" type="button" role="tab"
+                            aria-controls="vilmed-get-html-pane" aria-selected="false">Генерация HTML</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="vilmed-insert-html-tab" data-bs-toggle="tab"
+                            data-bs-target="#vilmed-insert-html-pane" type="button" role="tab"
+                            aria-controls="vilmed-insert-html-pane" aria-selected="false">Вставка HTML</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="vilmed-relevance-after-tab" data-bs-toggle="tab"
+                            data-bs-target="#vilmed-relevance-after-pane" type="button" role="tab"
+                            aria-controls="vilmed-relevance-after-pane" aria-selected="false">Повторная релевантность</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="vilmed-mark-in-table-tab" data-bs-toggle="tab"
+                            data-bs-target="#vilmed-mark-in-table-pane" type="button" role="tab"
+                            aria-controls="vilmed-mark-in-table-pane" aria-selected="false">Отметка в таблице</button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body tab-content" id="vilmed-product-description-tabs-content">
+                <div class="tab-pane fade show active" id="vilmed-serp-pane" role="tabpanel" aria-labelledby="vilmed-serp-tab">
+                    <div class="alert alert-primary mb-3" role="note">
+                        <strong>Что делает:</strong> собирает URL органической выдачи: сначала запрашивает Yandex, а Google использует как резерв только при ошибке или некорректном ответе Yandex.<br>
+                        <strong>Условие:</strong> заполнен <code>keyword</code>, пустой <code>description</code>, а <code>comp_yandex</code> и <code>comp_google</code> равны NULL. После 5 строк подряд без успешного ответа сценарий останавливается.<br>
+                        <strong>Изменяет:</strong> записывает найденные URL только в <code>comp_yandex</code> или <code>comp_google</code>; остальные столбцы не меняет.
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button class="btn btn-primary" id="vilmed-descriptions-start" type="button">Запустить</button>
+                        <button class="btn btn-outline-danger" id="vilmed-descriptions-stop" type="button" disabled>Остановить</button>
+                        <span class="badge text-bg-secondary align-self-center" id="vilmed-descriptions-status">Ожидает запуска</span>
+                    </div>
+                    <p class="mb-2" id="vilmed-descriptions-counts" aria-live="polite">Подходящих товаров: 0 из 0; обработано: 0</p>
+                    <div class="progress" role="progressbar" aria-label="Прогресс обработки товаров" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar" id="vilmed-descriptions-progress" style="width: 0%"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="vilmed-descriptions-message">Сценарий не запущен.</div>
+                </div>
+                <div class="tab-pane fade" id="vilmed-relevance-pane" role="tabpanel" aria-labelledby="vilmed-relevance-tab">
+                    <div class="alert alert-primary mb-3" role="note">
+                        <strong>Что делает:</strong> анализирует страницу товара и сайты-конкуренты из SERP, исключая агрегаторы и сам сайт товара; рассчитывает метрики целевой страницы и важные слова конкурентов.<br>
+                        <strong>Условие:</strong> пусты <code>description</code> и <code>important_words</code>, есть URL-список в <code>comp_yandex</code> или <code>comp_google</code>, а у строки заданы <code>url</code> и <code>keyword</code>.<br>
+                        <strong>Изменяет:</strong> записывает <code>score_before</code>, <code>reach_before</code>, <code>density_before</code>; если найдены подходящие слова — также <code>important_words</code>.
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button class="btn btn-primary" id="vilmed-relevance-start" type="button">Запустить</button>
+                        <button class="btn btn-outline-danger" id="vilmed-relevance-stop" type="button" disabled>Остановить</button>
+                        <span class="badge text-bg-secondary align-self-center" id="vilmed-relevance-status">Ожидает запуска</span>
+                    </div>
+                    <p class="mb-2" id="vilmed-relevance-counts" aria-live="polite">Подходящих товаров: 0 из 0; обработано: 0</p>
+                    <div class="progress" role="progressbar" aria-label="Прогресс анализа релевантности" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar" id="vilmed-relevance-progress" style="width: 0%"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="vilmed-relevance-message">Сценарий не запущен.</div>
+                </div>
+                <div class="tab-pane fade" id="vilmed-select-words-pane" role="tabpanel" aria-labelledby="vilmed-select-words-tab">
+                    <div class="alert alert-primary mb-3" role="note">
+                        <strong>Что делает:</strong> просит модель выбрать из <code>important_words</code> слова, подходящие для будущего описания товара; для ответа допускается до 3 попыток.<br>
+                        <strong>Условие:</strong> в <code>important_words</code> есть корректный список минимум из 2 слов, а <code>select_imp_words</code> пуст. После 5 ошибок товаров подряд пакет останавливается.<br>
+                        <strong>Изменяет:</strong> сохраняет выбранный список в <code>select_imp_words</code> в формате JSON-массива; другие столбцы не меняет.
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button class="btn btn-primary" id="vilmed-select-words-start" type="button">Запустить</button>
+                        <button class="btn btn-outline-danger" id="vilmed-select-words-stop" type="button" disabled>Остановить</button>
+                        <span class="badge text-bg-secondary align-self-center" id="vilmed-select-words-status">Ожидает запуска</span>
+                    </div>
+                    <p class="mb-2" id="vilmed-select-words-counts" aria-live="polite">Подходящих товаров: 0 из 0; обработано: 0</p>
+                    <div class="progress" role="progressbar" aria-label="Прогресс отбора важных слов" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar" id="vilmed-select-words-progress" style="width: 0%"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="vilmed-select-words-message">Сценарий не запущен.</div>
+                </div>
+                <div class="tab-pane fade" id="vilmed-get-html-pane" role="tabpanel" aria-labelledby="vilmed-get-html-tab">
+                    <div class="alert alert-primary mb-3" role="note">
+                        <strong>Что делает:</strong> генерирует HTML-описание товара по выбранным важным словам; некорректный ответ модели запрашивается повторно до 3 раз.<br>
+                        <strong>Условие:</strong> <code>desc_status</code> равен <code>missing</code>, заполнен и корректен <code>select_imp_words</code>, а у товара есть <code>url</code> и <code>product_name</code>. После 5 ошибок товаров подряд сценарий останавливается.<br>
+                        <strong>Изменяет:</strong> записывает HTML в <code>html_desc</code>; <code>desc_status</code> остаётся <code>missing</code> до успешной вставки в админ-панель.
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button class="btn btn-primary" id="vilmed-get-html-start" type="button">Запустить</button>
+                        <button class="btn btn-outline-danger" id="vilmed-get-html-stop" type="button" disabled>Остановить</button>
+                        <span class="badge text-bg-secondary align-self-center" id="vilmed-get-html-status">Ожидает запуска</span>
+                    </div>
+                    <p class="mb-2" id="vilmed-get-html-counts" aria-live="polite">Подходящих товаров: 0 из 0; обработано: 0</p>
+                    <div class="progress" role="progressbar" aria-label="Прогресс генерации HTML" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar" id="vilmed-get-html-progress" style="width: 0%"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="vilmed-get-html-message">Сценарий не запущен.</div>
+                </div>
+                <div class="tab-pane fade" id="vilmed-insert-html-pane" role="tabpanel" aria-labelledby="vilmed-insert-html-tab">
+                    <div class="alert alert-primary mb-3" role="note">
+                        <strong>Что делает:</strong> открывает видимый Chrome, вставляет подготовленный HTML в карточку товара Vilmed и ждёт подтверждения успешного сохранения.<br>
+                        <strong>Условие:</strong> заполнен <code>html_desc</code>, <code>desc_status</code> равен <code>missing</code>, заданы логин и пароль Vilmed; товар должен быть доступен для редактирования в админ-панели.<br>
+                        <strong>Изменяет:</strong> только после подтверждения сохранения переводит <code>desc_status</code> в <code>inserted</code>; <code>html_desc</code> только читает.
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button class="btn btn-primary" id="vilmed-insert-html-start" type="button">Запустить</button>
+                        <button class="btn btn-outline-danger" id="vilmed-insert-html-stop" type="button" disabled>Остановить</button>
+                        <span class="badge text-bg-secondary align-self-center" id="vilmed-insert-html-status">Ожидает запуска</span>
+                    </div>
+                    <p class="mb-2" id="vilmed-insert-html-counts" aria-live="polite">Подходящих товаров: 0 из 0; обработано: 0</p>
+                    <div class="progress" role="progressbar" aria-label="Прогресс вставки HTML" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar" id="vilmed-insert-html-progress" style="width: 0%"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="vilmed-insert-html-message">Сценарий не запущен.</div>
+                </div>
+                <div class="tab-pane fade" id="vilmed-relevance-after-pane" role="tabpanel" aria-labelledby="vilmed-relevance-after-tab">
+                    <div class="alert alert-primary mb-3" role="note">
+                        <strong>Что делает:</strong> повторно анализирует уже вставленный товар и вычисляет разницу метрик релевантности до и после вставки.<br>
+                        <strong>Условие:</strong> <code>desc_status</code> равен <code>inserted</code>, заполнен <code>score_before</code>, пуст <code>score_after</code>, есть URL-конкуренты в <code>comp_yandex</code> или <code>comp_google</code>, а также заданы <code>url</code> и <code>keyword</code>.<br>
+                        <strong>Изменяет:</strong> записывает <code>score_after</code>, <code>reach_after</code>, <code>density_after</code> и <code>score_delta</code>; исходные метрики и статус не меняет.
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button class="btn btn-primary" id="vilmed-relevance-after-start" type="button">Запустить</button>
+                        <button class="btn btn-outline-danger" id="vilmed-relevance-after-stop" type="button" disabled>Остановить</button>
+                        <span class="badge text-bg-secondary align-self-center" id="vilmed-relevance-after-status">Ожидает запуска</span>
+                    </div>
+                    <p class="mb-2" id="vilmed-relevance-after-counts" aria-live="polite">Подходящих товаров: 0 из 0; обработано: 0</p>
+                    <div class="progress" role="progressbar" aria-label="Прогресс повторного анализа релевантности" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar" id="vilmed-relevance-after-progress" style="width: 0%"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="vilmed-relevance-after-message">Сценарий не запущен.</div>
+                </div>
+                <div class="tab-pane fade" id="vilmed-mark-in-table-pane" role="tabpanel" aria-labelledby="vilmed-mark-in-table-tab">
+                    <div class="alert alert-primary mb-3" role="note">
+                        <strong>Что делает:</strong> в видимом Chrome находит товар в административной таблице, выбирает фильтр «Все», вводит ID, нажимает показ и включает «Пропустить». Затем ждёт, пока кнопка «Сгенерировать» в строке товара отключится.<br>
+                        <strong>Условие:</strong> <code>desc_status</code> равен <code>inserted</code>, <code>mark_in_table</code> равен FALSE и задан <code>product_id</code>; в админ-таблице должна найтись строка с этим ID.<br>
+                        <strong>Изменяет:</strong> только после подтверждения отключённой кнопки устанавливает <code>mark_in_table</code> в TRUE. Обрабатывает все подходящие строки, без лимита в 5 товаров.
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3">
+                        <button class="btn btn-primary" id="vilmed-mark-in-table-start" type="button">Запустить</button>
+                        <button class="btn btn-outline-danger" id="vilmed-mark-in-table-stop" type="button" disabled>Остановить</button>
+                        <span class="badge text-bg-secondary align-self-center" id="vilmed-mark-in-table-status">Ожидает запуска</span>
+                    </div>
+                    <p class="mb-2" id="vilmed-mark-in-table-counts" aria-live="polite">В очереди: 0; обработано: 0</p>
+                    <div class="progress" role="progressbar" aria-label="Прогресс отметки товаров" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                        <div class="progress-bar" id="vilmed-mark-in-table-progress" style="width: 0%"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="vilmed-mark-in-table-message">Сценарий не запущен.</div>
+                </div>
+            </div>
+        </div>
 
         <!-- ======================================================================= -->
         <!-- КАРТОЧКА 3: Инструменты обновления рабочих таблиц                       -->
@@ -992,6 +1155,622 @@
                     streamFinished = true;
                 }, 2000);
             });
+        })();
+    </script>
+    <script>
+        (() => {
+            const startButton = document.getElementById('vilmed-descriptions-start');
+            const stopButton = document.getElementById('vilmed-descriptions-stop');
+            const statusBadge = document.getElementById('vilmed-descriptions-status');
+            const counts = document.getElementById('vilmed-descriptions-counts');
+            const progress = document.getElementById('vilmed-descriptions-progress');
+            const progressTrack = progress.parentElement;
+            const message = document.getElementById('vilmed-descriptions-message');
+            const baseUrl = '/api/vilmed/product-descriptions';
+            const activeStatuses = new Set(['queued', 'running', 'stopping']);
+            const statusLabels = {
+                idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено', failed: 'Ошибка'
+            };
+
+            const renderStatus = (data) => {
+                const active = activeStatuses.has(data.status);
+                const total = Number(data.total_count || 0);
+                const candidates = Number(data.candidate_count || 0);
+                const processed = Number(data.processed_count || 0);
+                const percent = candidates ? Math.min(100, Math.round(processed * 100 / candidates)) : 0;
+                startButton.disabled = active;
+                stopButton.disabled = data.status !== 'running';
+                statusBadge.textContent = statusLabels[data.status] || data.status;
+                statusBadge.className = `badge align-self-center ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                counts.textContent = `Подходящих товаров: ${candidates} из ${total}; обработано: ${processed}; ошибок подряд: ${Number(data.error_count || 0)}`;
+                message.textContent = data.message || '';
+                progress.style.width = `${percent}%`;
+                progressTrack.setAttribute('aria-valuenow', String(percent));
+            };
+
+            const output = document.getElementById('live-log-output');
+            const outputStatus = document.getElementById('live-log-status');
+            let activeVilmedLogStream = null;
+
+            const connectLogStream = (logId) => {
+                if (activeVilmedLogStream) activeVilmedLogStream.close();
+                output.textContent += '\n';
+                outputStatus.textContent = 'подключение…';
+                activeVilmedLogStream = new EventSource(`/logs/${logId}`);
+                activeVilmedLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
+                activeVilmedLogStream.onmessage = (event) => {
+                    output.textContent += JSON.parse(event.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                activeVilmedLogStream.addEventListener('done', () => {
+                    outputStatus.textContent = 'завершено';
+                    activeVilmedLogStream.close();
+                    activeVilmedLogStream = null;
+                });
+                activeVilmedLogStream.onerror = () => { outputStatus.textContent = 'переподключение…'; };
+            };
+
+            const request = async (path, method = 'GET') => {
+                const response = await fetch(`${baseUrl}/${path}`, { method });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Запрос не выполнен.');
+                return data;
+            };
+
+            const refreshStatus = async () => {
+                try {
+                    renderStatus(await request('status'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось получить состояние сценария.';
+                }
+            };
+
+            startButton.addEventListener('click', async () => {
+                startButton.disabled = true;
+                const logId = crypto.randomUUID();
+                connectLogStream(logId);
+                try {
+                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    await refreshStatus();
+                } catch (error) {
+                    if (activeVilmedLogStream) activeVilmedLogStream.close();
+                    activeVilmedLogStream = null;
+                    message.textContent = error.message || 'Не удалось запустить сценарий.';
+                    startButton.disabled = false;
+                }
+            });
+
+            stopButton.addEventListener('click', async () => {
+                stopButton.disabled = true;
+                try {
+                    renderStatus(await request('stop', 'POST'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось остановить сценарий.';
+                }
+            });
+
+            refreshStatus();
+            window.setInterval(refreshStatus, 1500);
+        })();
+    </script>
+    <script>
+        (() => {
+            const startButton = document.getElementById('vilmed-relevance-start');
+            const stopButton = document.getElementById('vilmed-relevance-stop');
+            const statusBadge = document.getElementById('vilmed-relevance-status');
+            const counts = document.getElementById('vilmed-relevance-counts');
+            const progress = document.getElementById('vilmed-relevance-progress');
+            const progressTrack = progress.parentElement;
+            const message = document.getElementById('vilmed-relevance-message');
+            const baseUrl = '/api/vilmed/product-description-relevance';
+            const activeStatuses = new Set(['queued', 'running', 'stopping']);
+            const statusLabels = {
+                idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено', failed: 'Ошибка'
+            };
+            let activeLogStream = null;
+
+            const renderStatus = (data) => {
+                const active = activeStatuses.has(data.status);
+                const total = Number(data.total_count || 0);
+                const candidates = Number(data.candidate_count || 0);
+                const processed = Number(data.processed_count || 0);
+                const percent = candidates ? Math.min(100, Math.round(processed * 100 / candidates)) : 0;
+                startButton.disabled = active;
+                stopButton.disabled = data.status !== 'running';
+                statusBadge.textContent = statusLabels[data.status] || data.status;
+                statusBadge.className = `badge align-self-center ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                counts.textContent = `Подходящих товаров: ${candidates} из ${total}; обработано: ${processed}; ошибок: ${Number(data.error_count || 0)}`;
+                message.textContent = data.message || '';
+                progress.style.width = `${percent}%`;
+                progressTrack.setAttribute('aria-valuenow', String(percent));
+            };
+
+            const request = async (path, method = 'GET') => {
+                const response = await fetch(`${baseUrl}/${path}`, { method });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Запрос не выполнен.');
+                return data;
+            };
+            const refreshStatus = async () => {
+                try {
+                    renderStatus(await request('status'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось получить состояние сценария.';
+                }
+            };
+            startButton.addEventListener('click', async () => {
+                startButton.disabled = true;
+                const logId = crypto.randomUUID();
+                if (activeLogStream) activeLogStream.close();
+                const output = document.getElementById('live-log-output');
+                const outputStatus = document.getElementById('live-log-status');
+                output.textContent += '\n';
+                outputStatus.textContent = 'подключение…';
+                activeLogStream = new EventSource(`/logs/${logId}`);
+                activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
+                activeLogStream.onmessage = (event) => {
+                    output.textContent += JSON.parse(event.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                activeLogStream.addEventListener('done', () => {
+                    outputStatus.textContent = 'завершено';
+                    activeLogStream.close();
+                    activeLogStream = null;
+                });
+                try {
+                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    await refreshStatus();
+                } catch (error) {
+                    if (activeLogStream) activeLogStream.close();
+                    activeLogStream = null;
+                    message.textContent = error.message || 'Не удалось запустить сценарий.';
+                    startButton.disabled = false;
+                }
+            });
+            stopButton.addEventListener('click', async () => {
+                stopButton.disabled = true;
+                try {
+                    renderStatus(await request('stop', 'POST'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось остановить сценарий.';
+                }
+            });
+            refreshStatus();
+            window.setInterval(refreshStatus, 1500);
+        })();
+    </script>
+    <script>
+        (() => {
+            const startButton = document.getElementById('vilmed-relevance-after-start');
+            const stopButton = document.getElementById('vilmed-relevance-after-stop');
+            const statusBadge = document.getElementById('vilmed-relevance-after-status');
+            const counts = document.getElementById('vilmed-relevance-after-counts');
+            const progress = document.getElementById('vilmed-relevance-after-progress');
+            const progressTrack = progress.parentElement;
+            const message = document.getElementById('vilmed-relevance-after-message');
+            const baseUrl = '/api/vilmed/product-description-relevance-after';
+            const activeStatuses = new Set(['queued', 'running', 'stopping']);
+            const statusLabels = {
+                idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено',
+                no_candidates: 'Нет подходящих товаров', failed: 'Ошибка'
+            };
+            let activeLogStream = null;
+
+            const renderStatus = (data) => {
+                const active = activeStatuses.has(data.status);
+                const total = Number(data.total_count || 0);
+                const candidates = Number(data.candidate_count || 0);
+                const processed = Number(data.processed_count || 0);
+                const percent = candidates ? Math.min(100, Math.round(processed * 100 / candidates)) : 0;
+                startButton.disabled = active;
+                stopButton.disabled = data.status !== 'running';
+                statusBadge.textContent = statusLabels[data.status] || data.status;
+                statusBadge.className = `badge align-self-center ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                counts.textContent = `Подходящих товаров: ${candidates} из ${total}; обработано: ${processed}; ошибок: ${Number(data.error_count || 0)}`;
+                message.textContent = data.message || '';
+                progress.style.width = `${percent}%`;
+                progressTrack.setAttribute('aria-valuenow', String(percent));
+            };
+
+            const request = async (path, method = 'GET') => {
+                const response = await fetch(`${baseUrl}/${path}`, { method });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Запрос не выполнен.');
+                return data;
+            };
+            const refreshStatus = async () => {
+                try {
+                    renderStatus(await request('status'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось получить состояние сценария.';
+                }
+            };
+            startButton.addEventListener('click', async () => {
+                startButton.disabled = true;
+                const logId = crypto.randomUUID();
+                if (activeLogStream) activeLogStream.close();
+                const output = document.getElementById('live-log-output');
+                const outputStatus = document.getElementById('live-log-status');
+                output.textContent += '\n';
+                outputStatus.textContent = 'подключение…';
+                activeLogStream = new EventSource(`/logs/${logId}`);
+                activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
+                activeLogStream.onmessage = (event) => {
+                    output.textContent += JSON.parse(event.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                activeLogStream.addEventListener('done', () => {
+                    outputStatus.textContent = 'завершено';
+                    activeLogStream.close();
+                    activeLogStream = null;
+                });
+                try {
+                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    await refreshStatus();
+                } catch (error) {
+                    if (activeLogStream) activeLogStream.close();
+                    activeLogStream = null;
+                    message.textContent = error.message || 'Не удалось запустить сценарий.';
+                    startButton.disabled = false;
+                }
+            });
+            stopButton.addEventListener('click', async () => {
+                stopButton.disabled = true;
+                try {
+                    renderStatus(await request('stop', 'POST'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось остановить сценарий.';
+                }
+            });
+            refreshStatus();
+            window.setInterval(refreshStatus, 1500);
+        })();
+    </script>
+    <script>
+        (() => {
+            const startButton = document.getElementById('vilmed-select-words-start');
+            const stopButton = document.getElementById('vilmed-select-words-stop');
+            const statusBadge = document.getElementById('vilmed-select-words-status');
+            const counts = document.getElementById('vilmed-select-words-counts');
+            const progress = document.getElementById('vilmed-select-words-progress');
+            const progressTrack = progress.parentElement;
+            const message = document.getElementById('vilmed-select-words-message');
+            const baseUrl = '/api/vilmed/product-description-select-words';
+            const activeStatuses = new Set(['queued', 'running', 'stopping']);
+            const statusLabels = {
+                idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено', failed: 'Ошибка'
+            };
+            let activeLogStream = null;
+
+            const renderStatus = (data) => {
+                const active = activeStatuses.has(data.status);
+                const total = Number(data.total_count || 0);
+                const candidates = Number(data.candidate_count || 0);
+                const processed = Number(data.processed_count || 0);
+                const percent = candidates ? Math.min(100, Math.round(processed * 100 / candidates)) : 0;
+                startButton.disabled = active;
+                stopButton.disabled = data.status !== 'running';
+                statusBadge.textContent = statusLabels[data.status] || data.status;
+                statusBadge.className = `badge align-self-center ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                counts.textContent = `Подходящих товаров: ${candidates} из ${total}; обработано: ${processed}; ошибок: ${Number(data.error_count || 0)}`;
+                message.textContent = data.message || '';
+                progress.style.width = `${percent}%`;
+                progressTrack.setAttribute('aria-valuenow', String(percent));
+            };
+            const request = async (path, method = 'GET') => {
+                const response = await fetch(`${baseUrl}/${path}`, { method });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Запрос не выполнен.');
+                return data;
+            };
+            const refreshStatus = async () => {
+                try {
+                    renderStatus(await request('status'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось получить состояние сценария.';
+                }
+            };
+            startButton.addEventListener('click', async () => {
+                startButton.disabled = true;
+                const logId = crypto.randomUUID();
+                if (activeLogStream) activeLogStream.close();
+                const output = document.getElementById('live-log-output');
+                const outputStatus = document.getElementById('live-log-status');
+                output.textContent += '\n';
+                outputStatus.textContent = 'подключение…';
+                activeLogStream = new EventSource(`/logs/${logId}`);
+                activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
+                activeLogStream.onmessage = (event) => {
+                    output.textContent += JSON.parse(event.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                activeLogStream.addEventListener('done', () => {
+                    outputStatus.textContent = 'завершено';
+                    activeLogStream.close();
+                    activeLogStream = null;
+                });
+                try {
+                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    await refreshStatus();
+                } catch (error) {
+                    if (activeLogStream) activeLogStream.close();
+                    activeLogStream = null;
+                    message.textContent = error.message || 'Не удалось запустить сценарий.';
+                    startButton.disabled = false;
+                }
+            });
+            stopButton.addEventListener('click', async () => {
+                stopButton.disabled = true;
+                try {
+                    renderStatus(await request('stop', 'POST'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось остановить сценарий.';
+                }
+            });
+            refreshStatus();
+            window.setInterval(refreshStatus, 1500);
+        })();
+    </script>
+    <script>
+        (() => {
+            const startButton = document.getElementById('vilmed-get-html-start');
+            const stopButton = document.getElementById('vilmed-get-html-stop');
+            const statusBadge = document.getElementById('vilmed-get-html-status');
+            const counts = document.getElementById('vilmed-get-html-counts');
+            const progress = document.getElementById('vilmed-get-html-progress');
+            const progressTrack = progress.parentElement;
+            const message = document.getElementById('vilmed-get-html-message');
+            const baseUrl = '/api/vilmed/product-description-get-html';
+            const activeStatuses = new Set(['queued', 'running', 'stopping']);
+            const statusLabels = {
+                idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено', failed: 'Ошибка'
+            };
+            let activeLogStream = null;
+
+            const renderStatus = (data) => {
+                const active = activeStatuses.has(data.status);
+                const total = Number(data.total_count || 0);
+                const candidates = Number(data.candidate_count || 0);
+                const processed = Number(data.processed_count || 0);
+                const percent = candidates ? Math.min(100, Math.round(processed * 100 / candidates)) : 0;
+                startButton.disabled = active;
+                stopButton.disabled = data.status !== 'running';
+                statusBadge.textContent = statusLabels[data.status] || data.status;
+                statusBadge.className = `badge align-self-center ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                counts.textContent = `Подходящих товаров: ${candidates} из ${total}; обработано: ${processed}; ошибок: ${Number(data.error_count || 0)}`;
+                message.textContent = data.message || '';
+                progress.style.width = `${percent}%`;
+                progressTrack.setAttribute('aria-valuenow', String(percent));
+            };
+            const request = async (path, method = 'GET') => {
+                const response = await fetch(`${baseUrl}/${path}`, { method });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Запрос не выполнен.');
+                return data;
+            };
+            const refreshStatus = async () => {
+                try {
+                    renderStatus(await request('status'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось получить состояние сценария.';
+                }
+            };
+            startButton.addEventListener('click', async () => {
+                startButton.disabled = true;
+                const logId = crypto.randomUUID();
+                if (activeLogStream) activeLogStream.close();
+                const output = document.getElementById('live-log-output');
+                const outputStatus = document.getElementById('live-log-status');
+                output.textContent += '\n';
+                outputStatus.textContent = 'подключение…';
+                activeLogStream = new EventSource(`/logs/${logId}`);
+                activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
+                activeLogStream.onmessage = (event) => {
+                    output.textContent += JSON.parse(event.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                activeLogStream.addEventListener('done', () => {
+                    outputStatus.textContent = 'завершено';
+                    activeLogStream.close();
+                    activeLogStream = null;
+                });
+                try {
+                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    await refreshStatus();
+                } catch (error) {
+                    if (activeLogStream) activeLogStream.close();
+                    activeLogStream = null;
+                    message.textContent = error.message || 'Не удалось запустить сценарий.';
+                    startButton.disabled = false;
+                }
+            });
+            stopButton.addEventListener('click', async () => {
+                stopButton.disabled = true;
+                try {
+                    renderStatus(await request('stop', 'POST'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось остановить сценарий.';
+                }
+            });
+            refreshStatus();
+            window.setInterval(refreshStatus, 1500);
+        })();
+    </script>
+    <script>
+        (() => {
+            const startButton = document.getElementById('vilmed-insert-html-start');
+            const stopButton = document.getElementById('vilmed-insert-html-stop');
+            const statusBadge = document.getElementById('vilmed-insert-html-status');
+            const counts = document.getElementById('vilmed-insert-html-counts');
+            const progress = document.getElementById('vilmed-insert-html-progress');
+            const progressTrack = progress.parentElement;
+            const message = document.getElementById('vilmed-insert-html-message');
+            const baseUrl = '/api/vilmed/product-description-insert-html';
+            const activeStatuses = new Set(['queued', 'running', 'stopping']);
+            const statusLabels = {
+                idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено', failed: 'Ошибка'
+            };
+            let activeLogStream = null;
+
+            const renderStatus = (data) => {
+                const active = activeStatuses.has(data.status);
+                const total = Number(data.total_count || 0);
+                const candidates = Number(data.candidate_count || 0);
+                const processed = Number(data.processed_count || 0);
+                const percent = candidates ? Math.min(100, Math.round(processed * 100 / candidates)) : 0;
+                startButton.disabled = active;
+                stopButton.disabled = data.status !== 'running';
+                statusBadge.textContent = statusLabels[data.status] || data.status;
+                statusBadge.className = `badge align-self-center ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                counts.textContent = `Выбрано до пяти товаров: ${candidates}; обработано: ${processed}; ошибок: ${Number(data.error_count || 0)}`;
+                message.textContent = data.message || '';
+                progress.style.width = `${percent}%`;
+                progressTrack.setAttribute('aria-valuenow', String(percent));
+            };
+            const request = async (path, method = 'GET') => {
+                const response = await fetch(`${baseUrl}/${path}`, { method });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Запрос не выполнен.');
+                return data;
+            };
+            const refreshStatus = async () => {
+                try {
+                    renderStatus(await request('status'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось получить состояние сценария.';
+                }
+            };
+            startButton.addEventListener('click', async () => {
+                startButton.disabled = true;
+                const logId = crypto.randomUUID();
+                if (activeLogStream) activeLogStream.close();
+                const output = document.getElementById('live-log-output');
+                const outputStatus = document.getElementById('live-log-status');
+                output.textContent += '\n';
+                outputStatus.textContent = 'подключение…';
+                activeLogStream = new EventSource(`/logs/${logId}`);
+                activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
+                activeLogStream.onmessage = (event) => {
+                    output.textContent += JSON.parse(event.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                activeLogStream.addEventListener('done', () => {
+                    outputStatus.textContent = 'завершено';
+                    activeLogStream.close();
+                    activeLogStream = null;
+                });
+                try {
+                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    await refreshStatus();
+                } catch (error) {
+                    if (activeLogStream) activeLogStream.close();
+                    activeLogStream = null;
+                    message.textContent = error.message || 'Не удалось запустить сценарий.';
+                    startButton.disabled = false;
+                }
+            });
+            stopButton.addEventListener('click', async () => {
+                stopButton.disabled = true;
+                try {
+                    renderStatus(await request('stop', 'POST'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось остановить сценарий.';
+                }
+            });
+            refreshStatus();
+            window.setInterval(refreshStatus, 1500);
+        })();
+    </script>
+    <script>
+        (() => {
+            const startButton = document.getElementById('vilmed-mark-in-table-start');
+            const stopButton = document.getElementById('vilmed-mark-in-table-stop');
+            const statusBadge = document.getElementById('vilmed-mark-in-table-status');
+            const counts = document.getElementById('vilmed-mark-in-table-counts');
+            const progress = document.getElementById('vilmed-mark-in-table-progress');
+            const progressTrack = progress.parentElement;
+            const message = document.getElementById('vilmed-mark-in-table-message');
+            const baseUrl = '/api/vilmed/product-description-mark-in-table';
+            const activeStatuses = new Set(['queued', 'running', 'stopping']);
+            const labels = {
+                idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено', failed: 'Ошибка'
+            };
+            let activeLogStream = null;
+
+            const renderStatus = (data) => {
+                const active = activeStatuses.has(data.status);
+                const total = Number(data.total_count || 0);
+                const candidates = Number(data.candidate_count || 0);
+                const processed = Number(data.processed_count || 0);
+                const percent = candidates ? Math.min(100, Math.round(processed * 100 / candidates)) : 0;
+                startButton.disabled = active;
+                stopButton.disabled = data.status !== 'running';
+                statusBadge.textContent = labels[data.status] || data.status;
+                statusBadge.className = `badge align-self-center ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                counts.textContent = `Выбрано до пяти товаров: ${candidates} из ${total}; обработано: ${processed}; ошибок: ${Number(data.error_count || 0)}`;
+                message.textContent = data.message || '';
+                progress.style.width = `${percent}%`;
+                progressTrack.setAttribute('aria-valuenow', String(percent));
+            };
+            const request = async (path, method = 'GET') => {
+                const response = await fetch(`${baseUrl}/${path}`, { method });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.detail || 'Запрос не выполнен.');
+                return data;
+            };
+            const refreshStatus = async () => {
+                try {
+                    renderStatus(await request('status'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось получить состояние сценария.';
+                }
+            };
+            startButton.addEventListener('click', async () => {
+                startButton.disabled = true;
+                const logId = crypto.randomUUID();
+                if (activeLogStream) activeLogStream.close();
+                const output = document.getElementById('live-log-output');
+                const outputStatus = document.getElementById('live-log-status');
+                output.textContent += '\n';
+                outputStatus.textContent = 'подключение…';
+                activeLogStream = new EventSource(`/logs/${logId}`);
+                activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
+                activeLogStream.onmessage = (event) => {
+                    output.textContent += JSON.parse(event.data);
+                    output.scrollTop = output.scrollHeight;
+                };
+                activeLogStream.addEventListener('done', () => {
+                    outputStatus.textContent = 'завершено';
+                    activeLogStream.close();
+                    activeLogStream = null;
+                });
+                try {
+                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    await refreshStatus();
+                } catch (error) {
+                    if (activeLogStream) activeLogStream.close();
+                    activeLogStream = null;
+                    message.textContent = error.message || 'Не удалось запустить сценарий.';
+                    startButton.disabled = false;
+                }
+            });
+            stopButton.addEventListener('click', async () => {
+                stopButton.disabled = true;
+                try {
+                    renderStatus(await request('stop', 'POST'));
+                } catch (error) {
+                    message.textContent = error.message || 'Не удалось остановить сценарий.';
+                }
+            });
+            refreshStatus();
+            window.setInterval(refreshStatus, 1500);
         })();
     </script>
 </body>

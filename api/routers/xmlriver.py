@@ -149,7 +149,7 @@ async def run_popular(
 async def run_serp(
     phrases_text: str = Form(""),
     phrases_file: UploadFile | None = File(None),
-    top_n: int = Form(10),
+    top_n: int = Form(20),
     log_id: str = Form(""),
 ) -> HTMLResponse:
     return await _submit("serp", phrases_text, phrases_file, log_id, top_n)

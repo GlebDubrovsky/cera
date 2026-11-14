@@ -5,6 +5,8 @@ load_dotenv()
 
 XMLRIVER_USER = os.getenv("XMLRIVER_USER", "").strip()
 XMLRIVER_KEY = os.getenv("XMLRIVER_KEY", "").strip()
+VILMED_LOGIN = os.getenv("VILMED_LOGIN", "").strip()
+VILMED_PASSWORD = os.getenv("VILMED_PASSWORD", "")
 
 
 def get_database_url() -> str | None:
@@ -77,4 +79,45 @@ CONFIG_YANDEX_LOUD_API = {
     'folder' : os.getenv('YANDEX_CLOUD_FOLDER_ID', ''),
     'api_key' : os.getenv('YANDEX_CLOUD_API_KEY', ''),
     'model' : os.getenv('YANDEX_CLOUD_MODEL', 'deepseek-v4-flash/latest')
+}
+
+RELEVANCE_AGGREGATOR_DOMAINS = [
+    'megamarket.ru', '2gis.ru', 'aliexpress.com', 'AliExpress.ru', 'auto.ru',
+    'avito.ru', 'm.avito.ru', 'banki.ru', 'beru.ru', 'blizko.ru', 'cataloxy.ru',
+    'deal.by', 'domclick.ru', 'dzen.ru', 'ebay.com', 'edadeal.ru', 'e-katalog.ru',
+    'hh.ru', 'instagram.com', 'irecommend.ru', 'irr.ru', 'leroymerlin.ru',
+    'market.yandex.ru', 'translate.yandex.ru', 'mvideo.ru', 'onliner.by',
+    'otzovik.com', 'ozon.ru', 'pandao.ru', 'price.ru', 'prodoctorov.ru', 'profi.ru',
+    'pulscen.ru', 'quto.ru', 'rambler.ru', 'regmarkets.ru', 'satom.ru', 'shop.by',
+    'sravni.ru', 'tiu.ru', 'toshop.ru', 'wikipedia.org', 'ru.wikipedia.org',
+    'wildberries.ru', 'yandex.ru', 'yell.ru', 'zoon.ru', 'uslugi.yandex.ru',
+    'www.youtube.com', 'youtube.com',
+]
+
+RELEVANCE_EXCLUDED_WORDS = [
+    'руб', 'арт', 'еще', 'ооо', 'так', 'я', 'мы', 'ты', 'вы', 'он', 'она', 'оно',
+    'они', 'себя', 'мой', 'твой', 'ваш', 'наш', 'свой', 'его', 'ее', 'их', 'это',
+    'тот', 'этот', 'такой', 'таков', 'столько', 'весь', 'всякий', 'сам', 'самый', 'к',
+]
+
+VILMED_INSERT_PRODUCT_DESCRIPTION = {
+    'login_url': 'https://vilmed.ru/bitrix/admin/index.php#authorize',
+    'edit_url_template': (
+        'https://vilmed.ru/bitrix/admin/iblock_element_edit.php?'
+        'IBLOCK_ID=24&type=catalog&lang=ru&ID={product_id}&find_section_section=-1&WF=Y'
+    ),
+    'selectors': {
+        'login': 'input[name="USER_LOGIN"]',
+        'password': 'input[name="USER_PASSWORD"]',
+        'login_submit': 'input[name="Login"]',
+        'detail_tab': 'span[title="Детальная информация ( Ctrl+Alt+Q ) "]',
+        'html_mode': '#bxed_DETAIL_TEXT_html',
+        'html_textarea': 'textarea#bxed_DETAIL_TEXT',
+        'save': 'input#save',
+        'save_success': 'div.adm-info-message',
+        'save_error': 'div.adm-info-message-red, .adm-input-error',
+    },
+    'wait_timeout_seconds': 60,
+    'between_products_delay_seconds': 1.5,
+    'after_text_entry_delay_seconds': 3.0,
 }

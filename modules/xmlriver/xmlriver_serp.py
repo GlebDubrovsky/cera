@@ -105,7 +105,7 @@ def fetch_search_results(
     *,
     user_id: str,
     api_key: str,
-    top_n: int = 10,
+    top_n: int = 20,
     settings: Mapping[str, Any] | None = None,
     timeout: float = 30,
     retries: int = 2,

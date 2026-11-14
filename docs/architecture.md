@@ -10,7 +10,7 @@
 | `api/routers/` | HTTP/UI-адаптеры: принимают запрос, преобразуют ввод/вывод и вызывают логику приложения. Здесь не размещается основная логика возможностей. |
 | `modules/` | Функциональные возможности продукта, сгруппированные по назначению или сервису. Ядро должно иметь вызываемую из Python точку входа и не зависеть от FastAPI. |
 | `shared/` | Общие инфраструктурные компоненты и утилиты, которые действительно используются несколькими возможностями. Это не место для логики, специфичной одной функции продукта. |
-| `scenarios/` | Кодовые сценарии, координирующие функциональные модули и общие утилиты через Python-точки входа; содержит сценарий подготовки NEWS-метатегов. |
+| `scenarios/` | Кодовые сценарии, координирующие функциональные модули и общие утилиты через Python-точки входа; содержит NEWS-сценарий и сценарий обработки таблицы Vilmed в `scenarios/vilmed_product_desc/`. |
 | `config/` | Общая конфигурация приложения. Настройки конкретной возможности или сервиса хранятся рядом с её кодом. Секреты читаются из окружения; не записывать их в документацию. |
 | `tests/` | Автоматические тесты и отдельно расположенные ручные инструменты запуска. |
 | `templates/`, `static/` | HTML-шаблоны и статические ресурсы пользовательского интерфейса. |
@@ -84,9 +84,29 @@
 - `api/routers/auto_news_meta_tags.py` — интерфейсный адаптер `/auto-landings/meta-tags-news`; успешные ответы сохраняются как отдельные TXT-файлы с безопасными именами по заголовкам и выдаются одним ZIP-архивом.
 - `templates/dashboard.html` — карточка «Авто лендинги» и вкладка «Мета-теги NEWS» для запуска сценария.
 
+### `scenarios/vilmed_product_desc/`
+
+- `vilmed_product_desc_serp.py:run_product_descriptions(engine)` — отдельный сценарий существующей таблицы `vilmed_description_products`: выбирает строки с пустым `description`, непустым `keyword` и обоими `NULL` в `comp_yandex` и `comp_google`.
+- Для каждого подходящего товара сценарий сначала вызывает `serp` через `modules.xmlriver.service.run_module`; при ошибке или некорректном ответе делает паузу и использует `google_serp` как fallback. В соответствующее поле записывается только список URL; остановка проверяется между запросами.
+- Счётчик отражает только подряд идущие строки, для которых оба провайдера не вернули корректный ответ. Любой успешный ответ сбрасывает его в ноль; после пяти двойных отказов задача останавливается.
+- `vilmed_product_desc_relevance.py:run_product_description_relevance(engine)` — выбирает строки `vilmed_description_products` с пустыми `description` и `important_words`, где есть SERP-URL.
+- Анализ использует `url` и `keyword`, берёт конкурентов из Yandex (при отсутствии пригодных URL — из Google), исключает агрегаторы из `config/config.py` и передаёт `RELEVANCE_EXCLUDED_WORDS` в `modules.relevance_analyzer.run_analysis`.
+- Сценарий релевантности сохраняет метрики целевой страницы в `score_before`, `reach_before`, `density_before`; `important_words` хранится JSON-массивом в текстовом столбце. Слова выбираются по строкам TLP с конкурентным средним не меньше 1 и нулём повторений на целевой странице.
+- `vilmed_product_desc_select_words.py:run_vilmed_product_desc_select_words(engine)` — выбирает строки с JSON-массивом `important_words` длиной больше одного элемента и пустым `select_imp_words`; вызывает `modules.openai_api.chat_completion` с temperature `0.1`, max_tokens `10000` и reasoning off. Ответ валидируется как простой список и сохраняется JSON-массивом; на товар выполняется до трёх попыток, между товарами пауза 1 секунда, после пяти последовательных ошибок задача останавливается.
+- `vilmed_product_desc_get_html.py:run_vilmed_product_desc_get_html(engine)` — выбирает строки с непустым `select_imp_words` и `desc_status = 'missing'`; подставляет `url`, `product_name`, `package`, `specifications` и список слов в `shared/prompts/prmpt_for_product_vilmed_1.md`. Если package или specifications отсутствуют, соответствующий заголовок удаляется. Модуль `modules.openai_api.chat_completion` вызывается с temperature `0.1`, max_tokens `15000` и reasoning off; Markdown-обёртка HTML снимается, ответы без HTML-тега повторяются до трёх раз, результат сохраняется в `html_desc`. Между товарами пауза 1 секунда; после пяти последовательных ошибок задача останавливается.
+- `vilmed_product_desc_insert_html.py:run_vilmed_product_desc_insert_html(engine)` — выбирает все строки с непустым `html_desc` и `desc_status = 'missing'` без лимита на размер запуска, открывает видимый Chrome через Selenium, вставляет HTML в карточку по `product_id` и обновляет `desc_status` на `inserted` только после подтверждения сохранения.
+- `vilmed_product_desc_relevance_after.py:run_product_description_relevance_after(engine)` — выбирает `inserted`-строки с заполненным `score_before` и пустым `score_after`, берёт конкурентов из `comp_yandex` с fallback на `comp_google`, исключает агрегаторы из `config/config.py` и передаёт `RELEVANCE_EXCLUDED_WORDS` в анализатор. После успешного анализа сохраняет `score_after`, `reach_after`, `density_after` и разницу `score_delta = score_after - score_before`; ошибочная строка не останавливает пакет, остановка проверяется между товарами.
+- Повторный анализ использует метрики целевой страницы из `modules.relevance_analyzer`: `main_points` → общий балл, `coverage` → охват, `density.density_main_percent` → плотность.
+- `vilmed_product_desc_mark_in_table.py:run_vilmed_product_desc_mark_in_table(engine)` — выбирает строки со статусом `inserted` и `mark_in_table = false`, обрабатывает не более пяти за запуск в видимом Chrome, входит в Bitrix и включает `input.titlo-skip` для найденной строки по `product_id`. Флаг `mark_in_table` становится `true` только после того, как в той же строке кнопка `input[value="Сгенерировать"]` получила атрибут `disabled`; между товарами страница обновляется.
+- `api/routers/vilmed.py` управляет семью сценариями через отдельные start/stop/status endpoint и `shared.job_manager.JobManager`; прогресс направляется в панель «Вывод модулей».
+- `templates/dashboard.html` содержит вкладки семи сценариев карточки «Описание товаров vilmed», включая «Отметка в таблице».
+- Сценарии используют существующие поля `score_before`, `reach_before`, `density_before`, `score_after`, `reach_after`, `density_after`, `score_delta`, `select_imp_words`, `html_desc`, `desc_status` и `mark_in_table` без изменения схемы базы данных.
+- Тесты Vilmed покрывают все семь сценариев офлайн, без внешних запросов к сайтам или анализатору.
+
 ## Общие компоненты
 
 - `shared/database.py:create_database_engine`, `check_database_connection` — общие SQLAlchemy-инструменты подключения; URL передаётся только из серверного окружения, а движок создаётся и закрывается в lifespan приложения.
+- `shared/job_manager.py:JobManager` — потокобезопасное управление независимыми фоновыми задачами: запуск, защита от дублей, статус, счётчики и сигнал остановки; экземпляр создаётся в lifespan приложения.
 - `shared/phrase_import.py:parse_phrases` — разбор фраз из текста или XLSX.
 - `shared/temp_storage.py:manage_temp_dir` — создание, получение и удаление временных каталогов.
 - `shared/log_stream.py:run_with_log_capture`, `stream_session` — захват вывода задачи и передача логов через SSE.

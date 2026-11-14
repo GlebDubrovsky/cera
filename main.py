@@ -10,19 +10,23 @@ from fastapi.staticfiles import StaticFiles
 from api.routers import router
 from config.config import get_database_url
 from shared.database import create_database_engine
+from shared.job_manager import JobManager
 
 ROOT_DIR = Path(__file__).resolve().parent
 
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncIterator[None]:
-    """Создаёт общие ресурсы БД при запуске и освобождает их при остановке."""
+    """Создаёт общие ресурсы БД и фоновых задач при старте приложения."""
     database_url = get_database_url()
     engine = create_database_engine(database_url) if database_url else None
+    job_manager = JobManager()
     application.state.database_engine = engine
+    application.state.job_manager = job_manager
     try:
         yield
     finally:
+        job_manager.shutdown()
         if engine is not None:
             engine.dispose()
 

@@ -17,7 +17,7 @@ def run_module(
     module_id: str,
     phrases: Sequence[str],
     *,
-    top_n: int = 10,
+    top_n: int | None = None,
     frequency_mode: Literal["base", "both", "phrasal"] = "base",
 ) -> list[dict[str, Any]]:
     """Валидирует параметры запуска и вызывает выбранный модуль.
@@ -47,9 +47,11 @@ def run_module(
     if module_id == "frequency" and frequency_mode != "base":
         arguments["mode"] = frequency_mode
     if module_id in {"serp", "google_serp"}:
-        if top_n not in {10, 20, 30}:
+        default_top_n = 20 if module_id == "serp" else 10
+        selected_top_n = default_top_n if top_n is None else top_n
+        if selected_top_n not in {10, 20, 30}:
             raise ValueError("Количество результатов должно быть 10, 20 или 30.")
-        arguments["top_n"] = top_n
+        arguments["top_n"] = selected_top_n
 
     print(f"[XMLRIVER][{module_id.upper()}][START] Запуск для {len(phrases)} фраз.", flush=True)
     results = spec.function(phrases, **arguments)
