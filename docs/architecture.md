@@ -86,9 +86,10 @@
 
 ### `scenarios/vilmed_product_desc/`
 
-- `vilmed_product_desc_serp.py:run_product_descriptions(engine)` — отдельный сценарий существующей таблицы `vilmed_description_products`: выбирает строки с пустым `description`, непустым `keyword` и обоими `NULL` в `comp_yandex` и `comp_google`.
-- Для каждого подходящего товара сценарий сначала вызывает `serp` через `modules.xmlriver.service.run_module`; при ошибке или некорректном ответе делает паузу и использует `google_serp` как fallback. В соответствующее поле записывается только список URL; остановка проверяется между запросами.
-- Счётчик отражает только подряд идущие строки, для которых оба провайдера не вернули корректный ответ. Любой успешный ответ сбрасывает его в ноль; после пяти двойных отказов задача останавливается.
+- `vilmed_product_desc_serp.py:run_product_descriptions(engine, worker_count=1)` — выбирает строки `vilmed_description_products` с пустым `description`, непустым `keyword` и обоими `NULL` в `comp_yandex` и `comp_google`; параметр `worker_count` ограничен 1–10, интерфейс по умолчанию предлагает 5 потоков.
+- Каждый поток обрабатывает отдельный товар: сначала вызывает `serp` через `modules.xmlriver.service.run_module`, а при ошибке или некорректном ответе делает паузу и использует `google_serp` как fallback. В таблицу записывается только список URL; запись БД выполняется последовательно в управляющем потоке.
+- Счётчик ошибок — число подряд обработанных товаров, для которых оба провайдера не вернули корректный ответ; любой успех сбрасывает его. Порог остановки — `5 × worker_count` двойных отказов подряд (не более 50 при максимуме потоков); остановка проверяется между запросами и партиями.
+- Параллельные сообщения сценария сохраняют контекст SSE-логирования, чтобы логи запросов оставались видны в интерфейсе.
 - `vilmed_product_desc_relevance.py:run_product_description_relevance(engine)` — выбирает строки `vilmed_description_products` с пустыми `description` и `important_words`, где есть SERP-URL.
 - Анализ использует `url` и `keyword`, берёт конкурентов из Yandex (при отсутствии пригодных URL — из Google), исключает агрегаторы из `config/config.py` и передаёт `RELEVANCE_EXCLUDED_WORDS` в `modules.relevance_analyzer.run_analysis`.
 - Сценарий релевантности сохраняет метрики целевой страницы в `score_before`, `reach_before`, `density_before`; `important_words` хранится JSON-массивом в текстовом столбце. Слова выбираются по строкам TLP с конкурентным средним не меньше 1 и нулём повторений на целевой странице.

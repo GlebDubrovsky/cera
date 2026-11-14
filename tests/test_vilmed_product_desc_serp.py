@@ -209,6 +209,62 @@ class ProductDescriptionsTests(unittest.TestCase):
         self.assertEqual(result["processed_count"], 0)
         self.assertEqual(calls, [])
 
+    def test_search_requests_run_concurrently_up_to_selected_worker_count(self) -> None:
+        worker_count = 4
+        for row_id in range(1, worker_count + 1):
+            self.add_product(row_id, f"keyword {row_id}")
+        barrier = threading.Barrier(worker_count)
+        lock = threading.Lock()
+        active_calls = 0
+        maximum_active_calls = 0
+
+        def search_runner(module_id: str, phrases: list[str], top_n: int) -> list[dict[str, object]]:
+            nonlocal active_calls, maximum_active_calls
+            with lock:
+                active_calls += 1
+                maximum_active_calls = max(maximum_active_calls, active_calls)
+            try:
+                barrier.wait(timeout=5)
+            finally:
+                with lock:
+                    active_calls -= 1
+            return [{"results": [{"url": f"https://{phrases[0]}.test"}]}]
+
+        result = run_product_descriptions(
+            self.engine,
+            worker_count=worker_count,
+            search_runner=search_runner,
+            request_delay_seconds=0,
+        )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["processed_count"], worker_count)
+        self.assertEqual(maximum_active_calls, worker_count)
+
+    def test_error_limit_scales_with_worker_count(self) -> None:
+        worker_count = 2
+        for row_id in range(1, 13):
+            self.add_product(row_id, f"keyword {row_id}")
+        calls: list[str] = []
+        calls_lock = threading.Lock()
+
+        def search_runner(module_id: str, phrases: list[str], top_n: int) -> list[dict[str, object]]:
+            with calls_lock:
+                calls.append(module_id)
+            raise RuntimeError("offline test failure")
+
+        result = run_product_descriptions(
+            self.engine,
+            worker_count=worker_count,
+            search_runner=search_runner,
+            request_delay_seconds=0,
+        )
+
+        self.assertEqual(result["status"], "stopped")
+        self.assertEqual(result["processed_count"], 5 * worker_count)
+        self.assertEqual(result["error_count"], 5 * worker_count)
+        self.assertEqual(len(calls), 10 * worker_count)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1,14 +1,15 @@
 """Сбор URL поисковой выдачи для строк Vilmed без описания и результатов поиска.
 
-Публичная точка входа ``run_product_descriptions`` выбирает товары с пустым
-``description``, непустым ``keyword`` и пустыми JSONB-полями обоих провайдеров.
-Для каждого товара сначала выполняется поиск Yandex; Google используется только
-при ошибке Yandex. При пяти строках подряд без успешного ответа обоих провайдеров
-сценарий останавливается. В таблицу сохраняются только URL органических результатов.
+Сценарий выбирает товары с пустым ``description``, непустым ``keyword`` и
+пустыми JSONB-полями обоих провайдеров. До десяти независимых товаров можно
+обрабатывать одновременно. Для каждого сначала вызывается Yandex, а Google
+используется как резерв при ошибке или некорректном ответе.
 """
 
 from __future__ import annotations
 
+import contextvars
+from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 import threading
 import time
 from typing import Any, Callable
@@ -18,6 +19,8 @@ from sqlalchemy import JSON, Engine, bindparam, text
 from modules.xmlriver.service import run_module
 
 TABLE_NAME = "vilmed_description_products"
+MAX_WORKERS = 10
+ERRORS_PER_WORKER = 5
 
 _COUNT_TOTAL = text(f"SELECT COUNT(*) FROM {TABLE_NAME}")
 _SELECT_CANDIDATES = text(
@@ -30,7 +33,7 @@ _SELECT_CANDIDATES = text(
 
 
 def _extract_urls(value: Any) -> list[str] | None:
-    """Возвращает URL из успешного ответа; ``None`` означает ошибку модуля."""
+    """Извлекает URL из корректного ответа; ``None`` означает ошибку модуля."""
     if (
         not isinstance(value, list)
         or len(value) != 1
@@ -53,6 +56,7 @@ def _extract_urls(value: Any) -> list[str] | None:
 
 def run_product_descriptions(
     engine: Engine,
+    worker_count: int = 1,
     *,
     stop_event: threading.Event | None = None,
     progress_callback: Callable[..., None] | None = None,
@@ -60,16 +64,19 @@ def run_product_descriptions(
     top_n: int = 20,
     request_delay_seconds: float = 1.5,
 ) -> dict[str, int | str]:
-    """Сохраняет URL выдачи и переключает провайдера при ошибке Yandex.
+    """Параллельно собирает SERP и сохраняет URL в столбцы провайдеров.
 
-    Этапы: выбрать строки с пустыми description и обоими SERP-полями; запросить
-    Yandex, а Google — только при ошибке; сохранять URL и обновлять прогресс.
-    Счётчик ошибок отражает только подряд идущие строки без успешного ответа.
-    После пяти таких строк сценарий прекращает запросы к предположительно
-    недоступному сервису; пауза между вызовами снижает вероятность ограничений API.
+    Выборка и запись БД остаются в управляющем потоке: worker-потоки выполняют
+    только независимые вызовы API. При ``worker_count`` потоках порог остановки
+    равен пяти ошибочным товарам подряд на поток, чтобы уже отправленные
+    параллельные запросы не приводили к преждевременной остановке.
     """
+    if not 1 <= worker_count <= MAX_WORKERS:
+        raise ValueError(f"Количество потоков должно быть от 1 до {MAX_WORKERS}.")
+
     cancellation = stop_event or threading.Event()
     report = progress_callback or (lambda **_: None)
+    error_limit = ERRORS_PER_WORKER * worker_count
     with engine.connect() as connection:
         total_count = int(connection.execute(_COUNT_TOTAL).scalar_one())
         candidates = connection.execute(_SELECT_CANDIDATES).mappings().all()
@@ -82,10 +89,15 @@ def run_product_descriptions(
         candidate_count=candidate_count,
         processed_count=processed_count,
         error_count=consecutive_error_count,
-        message="Подходящих товаров нет" if candidate_count == 0 else "Получен список товаров для обработки",
+        message=(
+            "Подходящих товаров нет"
+            if candidate_count == 0
+            else f"Подготовлена очередь; потоков: {worker_count}, порог ошибок: {error_limit}"
+        ),
     )
     print(
-        f"[VILMED_DESCRIPTIONS][START][INFO] Подходящих товаров: {candidate_count} из {total_count}.",
+        f"[VILMED_DESCRIPTIONS][START][INFO] Подходящих товаров: {candidate_count} из {total_count}; "
+        f"потоков: {worker_count}; порог ошибок подряд: {error_limit}.",
         flush=True,
     )
 
@@ -99,28 +111,22 @@ def run_product_descriptions(
             "error_count": 0,
         }
 
-    last_request_at: float | None = None
-    for candidate_index, candidate in enumerate(candidates, start=1):
-        if cancellation.is_set():
-            break
-
+    def search_candidate(candidate_index: int, candidate: Any) -> tuple[Any, dict[str, list[str]], bool]:
+        """Ищет URL для одного товара; возвращает результаты и флаг прерывания."""
         row_id = candidate["row_id"]
         keyword = candidate["keyword"].strip()
         results: dict[str, list[str]] = {}
-        interrupted = False
+        last_request_at: float | None = None
 
-        # Yandex is primary; Google runs only if that request fails or its response is invalid.
         for module_id, column_name in (("serp", "comp_yandex"), ("google_serp", "comp_google")):
+            if cancellation.is_set():
+                return row_id, results, True
             if last_request_at is not None:
                 remaining_delay = max(
                     0.0, request_delay_seconds - (time.monotonic() - last_request_at)
                 )
                 if cancellation.wait(remaining_delay):
-                    interrupted = True
-                    break
-            if cancellation.is_set():
-                interrupted = True
-                break
+                    return row_id, results, True
 
             print(
                 f"[VILMED_DESCRIPTIONS][SEARCH][START] Товар {candidate_index}/{candidate_count}: {module_id}.",
@@ -139,69 +145,96 @@ def run_product_descriptions(
             if urls is not None:
                 results[column_name] = urls
                 print(
-                    f"[VILMED_DESCRIPTIONS][SEARCH][SUCCESS] Товар {candidate_index}/{candidate_count}: {module_id}, URL: {len(urls)}.",
+                    f"[VILMED_DESCRIPTIONS][SEARCH][SUCCESS] Товар {candidate_index}/{candidate_count}: "
+                    f"{module_id}, URL: {len(urls)}.",
                     flush=True,
                 )
                 break
-
             print(
-                f"[VILMED_DESCRIPTIONS][SEARCH][FAILURE] Товар {candidate_index}/{candidate_count}: {module_id}, {failure_detail}.",
+                f"[VILMED_DESCRIPTIONS][SEARCH][FAILURE] Товар {candidate_index}/{candidate_count}: "
+                f"{module_id}, {failure_detail}.",
                 flush=True,
             )
+        return row_id, results, False
 
-        if interrupted:
-            break
+    breaker_reached = False
+    with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="vilmed-serp") as executor:
+        for batch_start in range(0, candidate_count, worker_count):
+            if cancellation.is_set():
+                break
+            batch = candidates[batch_start : batch_start + worker_count]
+            futures = {}
+            for offset, candidate in enumerate(batch):
+                worker_context = contextvars.copy_context()
+                future = executor.submit(
+                    worker_context.run,
+                    search_candidate,
+                    batch_start + offset + 1,
+                    candidate,
+                )
+                futures[future] = candidate
 
-        if results:
-            assignments = ", ".join(f"{column} = :{column}" for column in results)
-            statement = text(
-                f"UPDATE {TABLE_NAME} SET {assignments} WHERE row_id = :row_id"
-            )
-            for column in results:
-                statement = statement.bindparams(bindparam(column, type_=JSON))
-            update_values: dict[str, Any] = {"row_id": row_id, **results}
-            with engine.begin() as connection:
-                connection.execute(statement, update_values)
+            for future in as_completed(futures):
+                try:
+                    row_id, results, interrupted = future.result()
+                except CancelledError:
+                    continue
+                if interrupted:
+                    continue
 
-        processed_count += 1
-        if results:
-            consecutive_error_count = 0
-            outcome = "SUCCESS"
-        else:
-            consecutive_error_count += 1
-            outcome = "FAILURE"
+                if results:
+                    assignments = ", ".join(f"{column} = :{column}" for column in results)
+                    statement = text(f"UPDATE {TABLE_NAME} SET {assignments} WHERE row_id = :row_id")
+                    for column in results:
+                        statement = statement.bindparams(bindparam(column, type_=JSON))
+                    with engine.begin() as connection:
+                        connection.execute(statement, {"row_id": row_id, **results})
 
-        message = (
-            f"Обработано {processed_count} из {candidate_count}; "
-            f"ошибок подряд: {consecutive_error_count}"
-        )
-        reached_error_limit = consecutive_error_count >= 5
-        if reached_error_limit:
-            message = "Остановлено: 5 строк подряд без успешного ответа от Yandex и Google"
-        report(
-            total_count=total_count,
-            candidate_count=candidate_count,
-            processed_count=processed_count,
-            error_count=consecutive_error_count,
-            message=message,
-        )
-        print(
-            f"[VILMED_DESCRIPTIONS][PRODUCT][{outcome}] Товар {candidate_index}/{candidate_count}; "
-            f"ошибок подряд: {consecutive_error_count}.",
-            flush=True,
-        )
-        if reached_error_limit:
-            print(
-                "[VILMED_DESCRIPTIONS][CIRCUIT_BREAKER][STOPPED] "
-                "Пять строк подряд завершились без ответа от обоих провайдеров.",
-                flush=True,
-            )
-            cancellation.set()
-            break
+                processed_count += 1
+                if results:
+                    consecutive_error_count = 0
+                    outcome = "SUCCESS"
+                else:
+                    consecutive_error_count += 1
+                    outcome = "FAILURE"
+
+                reached_error_limit = consecutive_error_count >= error_limit
+                message = (
+                    f"Обработано {processed_count} из {candidate_count}; "
+                    f"ошибок подряд: {consecutive_error_count} из {error_limit}; потоков: {worker_count}"
+                )
+                if reached_error_limit:
+                    breaker_reached = True
+                    message = f"Остановлено: {error_limit} строк подряд без успешного ответа от Yandex и Google"
+                    cancellation.set()
+                    for pending in futures:
+                        if pending is not future:
+                            pending.cancel()
+                report(
+                    total_count=total_count,
+                    candidate_count=candidate_count,
+                    processed_count=processed_count,
+                    error_count=consecutive_error_count,
+                    message=message,
+                )
+                print(
+                    f"[VILMED_DESCRIPTIONS][PRODUCT][{outcome}] Обработано {processed_count}/{candidate_count}; "
+                    f"ошибок подряд: {consecutive_error_count}/{error_limit}.",
+                    flush=True,
+                )
+                if reached_error_limit:
+                    print(
+                        f"[VILMED_DESCRIPTIONS][CIRCUIT_BREAKER][STOPPED] "
+                        f"{error_limit} строк подряд завершились без ответа от обоих провайдеров.",
+                        flush=True,
+                    )
+
+            if cancellation.is_set():
+                break
 
     final_status = "stopped" if cancellation.is_set() else "completed"
     print(
-        f"[VILMED_DESCRIPTIONS][FINISH][{('STOPPED' if final_status == 'stopped' else 'SUCCESS')}] "
+        f"[VILMED_DESCRIPTIONS][FINISH][{'STOPPED' if final_status == 'stopped' else 'SUCCESS'}] "
         f"Обработано: {processed_count}; ошибок подряд: {consecutive_error_count}; "
         f"всего подходящих: {candidate_count}.",
         flush=True,

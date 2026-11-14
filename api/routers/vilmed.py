@@ -6,7 +6,7 @@ import shutil
 import uuid
 from pathlib import Path
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 from html import escape
 
@@ -152,9 +152,11 @@ _PRODUCT_DESCRIPTIONS_JOB_ID = "vilmed_product_descriptions"
 
 @router.post("/api/vilmed/product-descriptions/start")
 async def start_vilmed_product_descriptions(
-    request: Request, log_id: str = ""
+    request: Request,
+    log_id: str = "",
+    worker_count: int = Query(default=5, ge=1, le=10),
 ) -> dict[str, object]:
-    """Запускает сценарий и направляет его stdout в SSE-сессию окна модулей."""
+    """Запускает сбор SERP с числом потоков от одного до десяти."""
     engine = getattr(request.app.state, "database_engine", None)
     manager = getattr(request.app.state, "job_manager", None)
     if engine is None:
@@ -167,6 +169,7 @@ async def start_vilmed_product_descriptions(
         log_id,
         run_product_descriptions,
         engine,
+        worker_count,
     ):
         raise HTTPException(status_code=409, detail="Сценарий уже выполняется или останавливается.")
     return {"started": True, **manager.get_status(_PRODUCT_DESCRIPTIONS_JOB_ID)}

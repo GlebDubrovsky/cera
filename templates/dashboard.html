@@ -882,11 +882,26 @@
             <div class="card-body tab-content" id="vilmed-product-description-tabs-content">
                 <div class="tab-pane fade show active" id="vilmed-serp-pane" role="tabpanel" aria-labelledby="vilmed-serp-tab">
                     <div class="alert alert-primary mb-3" role="note">
-                        <strong>Что делает:</strong> собирает URL органической выдачи: сначала запрашивает Yandex, а Google использует как резерв только при ошибке или некорректном ответе Yandex.<br>
-                        <strong>Условие:</strong> заполнен <code>keyword</code>, пустой <code>description</code>, а <code>comp_yandex</code> и <code>comp_google</code> равны NULL. После 5 строк подряд без успешного ответа сценарий останавливается.<br>
+                        <strong>Что делает:</strong> параллельно собирает URL органической выдачи для разных товаров: сначала запрашивает Yandex, а Google использует как резерв при ошибке или некорректном ответе.<br>
+                        <strong>Условие:</strong> заполнен <code>keyword</code>, пустой <code>description</code>, а <code>comp_yandex</code> и <code>comp_google</code> равны NULL. Можно выбрать от 1 до 10 потоков согласно лимиту API; остановка срабатывает после 5 × число потоков подряд неуспешных товаров.<br>
                         <strong>Изменяет:</strong> записывает найденные URL только в <code>comp_yandex</code> или <code>comp_google</code>; остальные столбцы не меняет.
                     </div>
-                    <div class="d-flex flex-wrap gap-2 mb-3">
+                    <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+                        <div>
+                            <label class="form-label mb-1" for="vilmed-descriptions-workers">Потоки (1–10)</label>
+                            <select class="form-select" id="vilmed-descriptions-workers" aria-label="Количество потоков для сбора SERP">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5" selected>5</option>
+                                <option value="6">6</option>
+                                <option value="7">7</option>
+                                <option value="8">8</option>
+                                <option value="9">9</option>
+                                <option value="10">10</option>
+                            </select>
+                        </div>
                         <button class="btn btn-primary" id="vilmed-descriptions-start" type="button">Запустить</button>
                         <button class="btn btn-outline-danger" id="vilmed-descriptions-stop" type="button" disabled>Остановить</button>
                         <span class="badge text-bg-secondary align-self-center" id="vilmed-descriptions-status">Ожидает запуска</span>
@@ -1161,6 +1176,7 @@
         (() => {
             const startButton = document.getElementById('vilmed-descriptions-start');
             const stopButton = document.getElementById('vilmed-descriptions-stop');
+            const workerSelect = document.getElementById('vilmed-descriptions-workers');
             const statusBadge = document.getElementById('vilmed-descriptions-status');
             const counts = document.getElementById('vilmed-descriptions-counts');
             const progress = document.getElementById('vilmed-descriptions-progress');
@@ -1229,9 +1245,13 @@
             startButton.addEventListener('click', async () => {
                 startButton.disabled = true;
                 const logId = crypto.randomUUID();
+                const workerCount = workerSelect.value;
                 connectLogStream(logId);
                 try {
-                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    renderStatus(await request(
+                        `start?log_id=${encodeURIComponent(logId)}&worker_count=${encodeURIComponent(workerCount)}`,
+                        'POST'
+                    ));
                     await refreshStatus();
                 } catch (error) {
                     if (activeVilmedLogStream) activeVilmedLogStream.close();
