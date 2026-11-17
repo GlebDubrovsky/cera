@@ -106,7 +106,7 @@ class ProductDescriptionsTests(unittest.TestCase):
         self.assertEqual(result["processed_count"], 0)
         self.assertEqual(calls, [])
 
-    def test_yandex_failure_falls_back_to_google_and_keeps_url_list(self) -> None:
+    def test_yandex_five_failures_fall_back_to_google(self) -> None:
         self.add_product(1, "keyword")
         calls: list[str] = []
 
@@ -129,13 +129,38 @@ class ProductDescriptionsTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "completed")
         self.assertEqual(result["error_count"], 0)
-        self.assertEqual(calls, ["serp", "google_serp"])
+        self.assertEqual(calls, ["serp"] * 5 + ["google_serp"])
         with self.engine.connect() as connection:
             row = connection.execute(
                 text("SELECT comp_yandex, comp_google FROM vilmed_description_products WHERE row_id = 1")
             ).one()
         self.assertIsNone(row.comp_yandex)
         self.assertEqual(json.loads(row.comp_google), ["https://google.test"])
+
+    def test_yandex_success_on_fifth_attempt_skips_google(self) -> None:
+        self.add_product(1, "keyword")
+        calls: list[str] = []
+
+        def search_runner(module_id: str, phrases: list[str], top_n: int) -> list[dict[str, object]]:
+            calls.append(module_id)
+            if len(calls) < 5:
+                raise RuntimeError("offline test failure")
+            return [{"results": [{"url": "https://yandex.test"}], "error": None}]
+
+        result = run_product_descriptions(
+            self.engine,
+            search_runner=search_runner,
+            request_delay_seconds=0,
+        )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(calls, ["serp"] * 5)
+        with self.engine.connect() as connection:
+            row = connection.execute(
+                text("SELECT comp_yandex, comp_google FROM vilmed_description_products WHERE row_id = 1")
+            ).one()
+        self.assertEqual(json.loads(row.comp_yandex), ["https://yandex.test"])
+        self.assertIsNone(row.comp_google)
 
     def test_consecutive_double_provider_failures_stop_after_five(self) -> None:
         for row_id in range(1, 7):
@@ -157,7 +182,7 @@ class ProductDescriptionsTests(unittest.TestCase):
         self.assertEqual(result["status"], "stopped")
         self.assertEqual(result["processed_count"], 5)
         self.assertEqual(result["error_count"], 5)
-        self.assertEqual(calls, ["serp", "google_serp"] * 5)
+        self.assertEqual(calls, (["serp"] * 5 + ["google_serp"]) * 5)
         processed_errors = [item["error_count"] for item in progress if item["processed_count"]]
         self.assertEqual(processed_errors, [1, 2, 3, 4, 5])
         self.assertIn("5 строк подряд", progress[-1]["message"])
@@ -263,7 +288,7 @@ class ProductDescriptionsTests(unittest.TestCase):
         self.assertEqual(result["status"], "stopped")
         self.assertEqual(result["processed_count"], 5 * worker_count)
         self.assertEqual(result["error_count"], 5 * worker_count)
-        self.assertEqual(len(calls), 10 * worker_count)
+        self.assertEqual(len(calls), 30 * worker_count)
 
 
 if __name__ == "__main__":

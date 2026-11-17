@@ -1,6 +1,7 @@
 import asyncio
 import contextvars
 import json
+from pathlib import Path
 import queue
 import sys
 import threading
@@ -25,6 +26,15 @@ _active_session: contextvars.ContextVar[LogSession | None] = contextvars.Context
 )
 _sessions: dict[str, LogSession] = {}
 _sessions_lock = threading.Lock()
+LOG_FILE_PATH = Path(__file__).resolve().parents[1] / "logs.txt"
+_log_file_lock = threading.Lock()
+
+
+def _append_log_archive(text: str) -> None:
+    """Append captured output so clearing the browser panel never loses logs."""
+    with _log_file_lock:
+        with LOG_FILE_PATH.open("a", encoding="utf-8") as log_file:
+            log_file.write(text)
 
 
 class _LogRoutingStdout:
@@ -36,6 +46,13 @@ class _LogRoutingStdout:
         if session is None:
             return self._original.write(text)
         if text:
+            try:
+                _append_log_archive(text)
+            except OSError:
+                self._original.write(
+                    "[LOG_STREAM][ARCHIVE][FAILURE] Не удалось записать сообщение в logs.txt.\n"
+                )
+                self._original.flush()
             session.messages.put(text)
         return len(text)
 

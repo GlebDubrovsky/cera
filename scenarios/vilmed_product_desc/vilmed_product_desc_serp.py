@@ -2,8 +2,8 @@
 
 Сценарий выбирает товары с пустым ``description``, непустым ``keyword`` и
 пустыми JSONB-полями обоих провайдеров. До десяти независимых товаров можно
-обрабатывать одновременно. Для каждого сначала вызывается Yandex, а Google
-используется как резерв при ошибке или некорректном ответе.
+обрабатывать одновременно. Для каждого выполняется до пяти попыток Yandex;
+Google вызывается один раз только если все попытки Yandex завершились неудачей.
 """
 
 from __future__ import annotations
@@ -118,43 +118,52 @@ def run_product_descriptions(
         results: dict[str, list[str]] = {}
         last_request_at: float | None = None
 
-        for module_id, column_name in (("serp", "comp_yandex"), ("google_serp", "comp_google")):
-            if cancellation.is_set():
-                return row_id, results, True
-            if last_request_at is not None:
-                remaining_delay = max(
-                    0.0, request_delay_seconds - (time.monotonic() - last_request_at)
-                )
-                if cancellation.wait(remaining_delay):
+        # Google — резервный источник: сначала полностью исчерпываем пять попыток Yandex.
+        for module_id, column_name, max_attempts in (
+            ("serp", "comp_yandex", 5),
+            ("google_serp", "comp_google", 1),
+        ):
+            for attempt in range(1, max_attempts + 1):
+                if cancellation.is_set():
                     return row_id, results, True
+                if last_request_at is not None:
+                    remaining_delay = max(
+                        0.0, request_delay_seconds - (time.monotonic() - last_request_at)
+                    )
+                    if cancellation.wait(remaining_delay):
+                        return row_id, results, True
 
-            print(
-                f"[VILMED_DESCRIPTIONS][SEARCH][START] Товар {candidate_index}/{candidate_count}: {module_id}.",
-                flush=True,
-            )
-            try:
-                module_results = search_runner(module_id, [keyword], top_n=top_n)
-            except Exception as error:
-                urls = None
-                failure_detail = type(error).__name__
-            else:
-                urls = _extract_urls(module_results)
-                failure_detail = "некорректный ответ" if urls is None else ""
-            last_request_at = time.monotonic()
-
-            if urls is not None:
-                results[column_name] = urls
                 print(
-                    f"[VILMED_DESCRIPTIONS][SEARCH][SUCCESS] Товар {candidate_index}/{candidate_count}: "
-                    f"{module_id}, URL: {len(urls)}.",
+                    f"[VILMED_DESCRIPTIONS][SEARCH][START] Товар {candidate_index}/{candidate_count}: "
+                    f"{module_id}, попытка {attempt}/{max_attempts}.",
                     flush=True,
                 )
+                try:
+                    module_results = search_runner(module_id, [keyword], top_n=top_n)
+                except Exception as error:
+                    urls = None
+                    failure_detail = type(error).__name__
+                else:
+                    urls = _extract_urls(module_results)
+                    failure_detail = "некорректный ответ" if urls is None else ""
+                last_request_at = time.monotonic()
+
+                if urls is not None:
+                    results[column_name] = urls
+                    print(
+                        f"[VILMED_DESCRIPTIONS][SEARCH][SUCCESS] Товар {candidate_index}/{candidate_count}: "
+                        f"{module_id}, попытка {attempt}/{max_attempts}, URL: {len(urls)}.",
+                        flush=True,
+                    )
+                    break
+                print(
+                    f"[VILMED_DESCRIPTIONS][SEARCH][FAILURE] Товар {candidate_index}/{candidate_count}: "
+                    f"{module_id}, попытка {attempt}/{max_attempts}, {failure_detail}.",
+                    flush=True,
+                )
+
+            if results:
                 break
-            print(
-                f"[VILMED_DESCRIPTIONS][SEARCH][FAILURE] Товар {candidate_index}/{candidate_count}: "
-                f"{module_id}, {failure_detail}.",
-                flush=True,
-            )
         return row_id, results, False
 
     breaker_reached = False

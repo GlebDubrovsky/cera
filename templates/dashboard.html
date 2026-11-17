@@ -235,8 +235,7 @@
                     status.textContent = 'выполняется';
                 };
                 logStream.onmessage = (messageEvent) => {
-                    output.textContent += JSON.parse(messageEvent.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(messageEvent.data));
                 };
                 logStream.addEventListener('done', () => {
                     logStreamFinished = true;
@@ -610,7 +609,9 @@
                     logStatus.textContent = 'подключение…';
                     const stream = new EventSource(`/logs/${logId}`);
                     stream.onopen = () => { logStatus.textContent = 'выполняется'; };
-                    stream.onmessage = (message) => { logOutput.textContent += JSON.parse(message.data); };
+                    stream.onmessage = (message) => {
+                        window.appendLiveLogChunk(logOutput, JSON.parse(message.data));
+                    };
                     stream.addEventListener('done', () => { logStatus.textContent = 'завершено'; stream.close(); });
                     result.className = 'alert alert-info mt-3';
                     result.textContent = 'Запрос отправляется…';
@@ -882,7 +883,7 @@
             <div class="card-body tab-content" id="vilmed-product-description-tabs-content">
                 <div class="tab-pane fade show active" id="vilmed-serp-pane" role="tabpanel" aria-labelledby="vilmed-serp-tab">
                     <div class="alert alert-primary mb-3" role="note">
-                        <strong>Что делает:</strong> параллельно собирает URL органической выдачи для разных товаров: сначала запрашивает Yandex, а Google использует как резерв при ошибке или некорректном ответе.<br>
+                        <strong>Что делает:</strong> параллельно собирает URL органической выдачи для разных товаров: делает до 5 попыток Yandex, затем использует Google как резерв только если все попытки Yandex неудачны.<br>
                         <strong>Условие:</strong> заполнен <code>keyword</code>, пустой <code>description</code>, а <code>comp_yandex</code> и <code>comp_google</code> равны NULL. Можно выбрать от 1 до 10 потоков согласно лимиту API; остановка срабатывает после 5 × число потоков подряд неуспешных товаров.<br>
                         <strong>Изменяет:</strong> записывает найденные URL только в <code>comp_yandex</code> или <code>comp_google</code>; остальные столбцы не меняет.
                     </div>
@@ -914,11 +915,21 @@
                 </div>
                 <div class="tab-pane fade" id="vilmed-relevance-pane" role="tabpanel" aria-labelledby="vilmed-relevance-tab">
                     <div class="alert alert-primary mb-3" role="note">
-                        <strong>Что делает:</strong> анализирует страницу товара и сайты-конкуренты из SERP, исключая агрегаторы и сам сайт товара; рассчитывает метрики целевой страницы и важные слова конкурентов.<br>
-                        <strong>Условие:</strong> пусты <code>description</code> и <code>important_words</code>, есть URL-список в <code>comp_yandex</code> или <code>comp_google</code>, а у строки заданы <code>url</code> и <code>keyword</code>.<br>
-                        <strong>Изменяет:</strong> записывает <code>score_before</code>, <code>reach_before</code>, <code>density_before</code>; если найдены подходящие слова — также <code>important_words</code>.
+                        <strong>Что делает:</strong> анализирует целевую страницу и сайты-конкуренты из SERP, исключая агрегаторы и сам сайт; рассчитывает метрики страницы и важные слова конкурентов.<br>
+                        <strong>Условие:</strong> пусты <code>description</code> и <code>important_words</code>, есть URL-список в <code>comp_yandex</code> или <code>comp_google</code>, а у строки заданы <code>url</code> и <code>keyword</code>. Можно выбрать от 1 до 5 параллельных анализов; при остановке завершается текущая партия уже запущенных товаров.<br>
+                        <strong>Изменяет:</strong> записывает <code>score_before</code>, <code>reach_before</code> и <code>density_before</code>; если найдены подходящие слова — также <code>important_words</code>.
                     </div>
-                    <div class="d-flex flex-wrap gap-2 mb-3">
+                    <div class="d-flex flex-wrap align-items-end gap-2 mb-3">
+                        <div>
+                            <label class="form-label mb-1" for="vilmed-relevance-workers">Потоки (1–5)</label>
+                            <select class="form-select" id="vilmed-relevance-workers" aria-label="Количество потоков анализа релевантности">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="4">4</option>
+                                <option value="5" selected>5</option>
+                            </select>
+                        </div>
                         <button class="btn btn-primary" id="vilmed-relevance-start" type="button">Запустить</button>
                         <button class="btn btn-outline-danger" id="vilmed-relevance-stop" type="button" disabled>Остановить</button>
                         <span class="badge text-bg-secondary align-self-center" id="vilmed-relevance-status">Ожидает запуска</span>
@@ -1100,6 +1111,32 @@
             let activeForm = null;
             let streamFinished = false;
 
+            window.appendLiveLogChunk = (target, chunk) => {
+                const previousLine = target.lastElementChild?.dataset.logPending === 'true'
+                    ? target.lastElementChild : null;
+                const lines = `${previousLine?.textContent || ''}${chunk}`.split('\n');
+                const pendingText = lines.pop();
+                previousLine?.remove();
+
+                const appendLine = (text, isPending = false) => {
+                    const line = document.createElement('span');
+                    line.className = 'live-log-line';
+                    if (/\[(?:ERROR|FAILURE|FAILED)\]/i.test(text)) {
+                        line.classList.add('live-log-line--error');
+                    } else if (/\[(?:SUCCESS|SUCCEEDED|OK)\]/i.test(text)) {
+                        line.classList.add('live-log-line--success');
+                    }
+                    if (isPending) line.dataset.logPending = 'true';
+                    line.textContent = text;
+                    target.append(line);
+                    if (!isPending) target.append(document.createTextNode('\n'));
+                };
+
+                lines.forEach((line) => appendLine(line));
+                if (pendingText) appendLine(pendingText, true);
+                target.scrollTop = target.scrollHeight;
+            };
+
             window.addEventListener('pagehide', () => {
                 const pendingDownload = document.querySelector('a[href^="/download/xmlriver/"], a[href^="/download/relevance-analyzer/"], a[href^="/download/auto-landings/meta-tags-news/"]');
                 if (pendingDownload) return;
@@ -1115,6 +1152,10 @@
             document.getElementById('clear-live-logs').addEventListener('click', () => {
                 output.textContent = '';
             });
+
+            window.setInterval(() => {
+                output.textContent = '';
+            }, 5 * 60 * 1000);
 
             document.body.addEventListener('htmx:configRequest', (event) => {
                 const form = event.detail.elt.closest('form');
@@ -1139,8 +1180,7 @@
                     status.textContent = 'выполняется';
                 };
                 activeStream.onmessage = (messageEvent) => {
-                    output.textContent += JSON.parse(messageEvent.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(messageEvent.data));
                 };
                 activeStream.addEventListener('done', () => {
                     streamFinished = true;
@@ -1211,13 +1251,12 @@
 
             const connectLogStream = (logId) => {
                 if (activeVilmedLogStream) activeVilmedLogStream.close();
-                output.textContent += '\n';
+                window.appendLiveLogChunk(output, '\n');
                 outputStatus.textContent = 'подключение…';
                 activeVilmedLogStream = new EventSource(`/logs/${logId}`);
                 activeVilmedLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
                 activeVilmedLogStream.onmessage = (event) => {
-                    output.textContent += JSON.parse(event.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(event.data));
                 };
                 activeVilmedLogStream.addEventListener('done', () => {
                     outputStatus.textContent = 'завершено';
@@ -1278,6 +1317,7 @@
         (() => {
             const startButton = document.getElementById('vilmed-relevance-start');
             const stopButton = document.getElementById('vilmed-relevance-stop');
+            const workerSelect = document.getElementById('vilmed-relevance-workers');
             const statusBadge = document.getElementById('vilmed-relevance-status');
             const counts = document.getElementById('vilmed-relevance-counts');
             const progress = document.getElementById('vilmed-relevance-progress');
@@ -1331,8 +1371,7 @@
                 activeLogStream = new EventSource(`/logs/${logId}`);
                 activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
                 activeLogStream.onmessage = (event) => {
-                    output.textContent += JSON.parse(event.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(event.data));
                 };
                 activeLogStream.addEventListener('done', () => {
                     outputStatus.textContent = 'завершено';
@@ -1340,7 +1379,11 @@
                     activeLogStream = null;
                 });
                 try {
-                    renderStatus(await request(`start?log_id=${encodeURIComponent(logId)}`, 'POST'));
+                    const workerCount = workerSelect.value;
+                    renderStatus(await request(
+                        `start?log_id=${encodeURIComponent(logId)}&worker_count=${encodeURIComponent(workerCount)}`,
+                        'POST'
+                    ));
                     await refreshStatus();
                 } catch (error) {
                     if (activeLogStream) activeLogStream.close();
@@ -1419,8 +1462,7 @@
                 activeLogStream = new EventSource(`/logs/${logId}`);
                 activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
                 activeLogStream.onmessage = (event) => {
-                    output.textContent += JSON.parse(event.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(event.data));
                 };
                 activeLogStream.addEventListener('done', () => {
                     outputStatus.textContent = 'завершено';
@@ -1505,8 +1547,7 @@
                 activeLogStream = new EventSource(`/logs/${logId}`);
                 activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
                 activeLogStream.onmessage = (event) => {
-                    output.textContent += JSON.parse(event.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(event.data));
                 };
                 activeLogStream.addEventListener('done', () => {
                     outputStatus.textContent = 'завершено';
@@ -1591,8 +1632,7 @@
                 activeLogStream = new EventSource(`/logs/${logId}`);
                 activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
                 activeLogStream.onmessage = (event) => {
-                    output.textContent += JSON.parse(event.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(event.data));
                 };
                 activeLogStream.addEventListener('done', () => {
                     outputStatus.textContent = 'завершено';
@@ -1672,13 +1712,12 @@
                 if (activeLogStream) activeLogStream.close();
                 const output = document.getElementById('live-log-output');
                 const outputStatus = document.getElementById('live-log-status');
-                output.textContent += '\n';
+                window.appendLiveLogChunk(output, '\n');
                 outputStatus.textContent = 'подключение…';
                 activeLogStream = new EventSource(`/logs/${logId}`);
                 activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
                 activeLogStream.onmessage = (event) => {
-                    output.textContent += JSON.parse(event.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(event.data));
                 };
                 activeLogStream.addEventListener('done', () => {
                     outputStatus.textContent = 'завершено';
@@ -1758,13 +1797,12 @@
                 if (activeLogStream) activeLogStream.close();
                 const output = document.getElementById('live-log-output');
                 const outputStatus = document.getElementById('live-log-status');
-                output.textContent += '\n';
+                window.appendLiveLogChunk(output, '\n');
                 outputStatus.textContent = 'подключение…';
                 activeLogStream = new EventSource(`/logs/${logId}`);
                 activeLogStream.onopen = () => { outputStatus.textContent = 'выполняется'; };
                 activeLogStream.onmessage = (event) => {
-                    output.textContent += JSON.parse(event.data);
-                    output.scrollTop = output.scrollHeight;
+                    window.appendLiveLogChunk(output, JSON.parse(event.data));
                 };
                 activeLogStream.addEventListener('done', () => {
                     outputStatus.textContent = 'завершено';

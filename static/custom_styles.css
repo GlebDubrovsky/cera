@@ -47,8 +47,8 @@
 }
 
 .body > .container {
-    width: 75vw;
-    max-width: 75vw;
+    width: 66.6667vw;
+    max-width: 66.6667vw;
     margin-left: 0;
     margin-right: 0;
 }
@@ -61,7 +61,7 @@
     left: auto;
     display: flex;
     flex-direction: column;
-    width: calc(25vw - 15px);
+    width: calc(33.3333vw - 15px);
     z-index: 1050;
     overflow: hidden;
     margin-left: 15px;
@@ -92,4 +92,14 @@
     background: var(--log-bg);
     color: var(--log-fg);
     border-radius: 4px;
+}
+
+.live-log-line--success {
+    color: #356d4b;
+    font-weight: 500;
+}
+
+.live-log-line--error {
+    color: #a04b52;
+    font-weight: 500;
 }

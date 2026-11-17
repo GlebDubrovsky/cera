@@ -199,9 +199,11 @@ _PRODUCT_DESCRIPTION_RELEVANCE_JOB_ID = "vilmed_product_desc_relevance"
 
 @router.post("/api/vilmed/product-description-relevance/start")
 async def start_vilmed_product_description_relevance(
-    request: Request, log_id: str = ""
+    request: Request,
+    log_id: str = "",
+    worker_count: int = Query(default=5, ge=1, le=5),
 ) -> dict[str, object]:
-    """Запускает пакетный анализ релевантности товаров Vilmed."""
+    """Запускает пакетный анализ релевантности максимум в пяти потоках."""
     engine = getattr(request.app.state, "database_engine", None)
     manager = getattr(request.app.state, "job_manager", None)
     if engine is None:
@@ -214,6 +216,7 @@ async def start_vilmed_product_description_relevance(
         log_id,
         run_product_description_relevance,
         engine,
+        worker_count,
     ):
         raise HTTPException(status_code=409, detail="Сценарий уже выполняется или останавливается.")
     return {"started": True, **manager.get_status(_PRODUCT_DESCRIPTION_RELEVANCE_JOB_ID)}

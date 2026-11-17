@@ -139,7 +139,10 @@ class OpenAIRouteTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(response, expected)
         self.assertTrue(completion.call_args.kwargs['reasoning_enabled'])
 
-    async def test_route_sends_module_prints_to_sse_session(self) -> None:
+    async def test_route_sends_module_prints_to_sse_session_and_log_archive(self) -> None:
+        from pathlib import Path
+        from tempfile import TemporaryDirectory
+
         log_id = uuid4()
         expected = {'choices': [{'message': {'content': 'hello'}}]}
 
@@ -151,13 +154,18 @@ class OpenAIRouteTests(unittest.IsolatedAsyncioTestCase):
             messages=[web.ChatMessage(role='user', content='hi')],
             log_id=log_id,
         )
-        with patch('api.routers.openai_api.chat_completion', side_effect=print_progress):
-            response = await web.create_chat_completion(request)
+        with TemporaryDirectory() as temporary_directory:
+            archive_path = Path(temporary_directory) / 'logs.txt'
+            with patch('shared.log_stream.LOG_FILE_PATH', archive_path):
+                with patch('api.routers.openai_api.chat_completion', side_effect=print_progress):
+                    response = await web.create_chat_completion(request)
+            archive_content = archive_path.read_text(encoding='utf-8')
 
         events = [event async for event in stream_session(str(log_id))]
         self.assertEqual(response, expected)
         self.assertTrue(any('progress reached SSE' in event for event in events))
         self.assertTrue(any('event: done' in event for event in events))
+        self.assertIn('progress reached SSE', archive_content)
 
     async def test_route_hides_provider_error_details(self) -> None:
         request = web.ChatCompletionRequest(messages=[web.ChatMessage(role='user', content='hi')])

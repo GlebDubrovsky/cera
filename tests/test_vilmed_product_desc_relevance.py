@@ -214,6 +214,41 @@ class ProductDescriptionRelevanceTests(unittest.TestCase):
         self.assertEqual(result["processed_count"], 2)
         self.assertEqual(result["error_count"], 1)
 
+    def test_analyses_candidates_concurrently_with_selected_worker_count(self) -> None:
+        for row_id in range(1, 4):
+            self.add_product(row_id, yandex=f'["https://competitor.test/{row_id}"]')
+        barrier = threading.Barrier(3)
+        lock = threading.Lock()
+        active_count = 0
+        maximum_active_count = 0
+
+        def analysis_runner(_config: dict[str, object]) -> SimpleNamespace:
+            nonlocal active_count, maximum_active_count
+            with lock:
+                active_count += 1
+                maximum_active_count = max(maximum_active_count, active_count)
+            try:
+                barrier.wait(timeout=10)
+                return self.analysis_result()
+            finally:
+                with lock:
+                    active_count -= 1
+
+        result = run_product_description_relevance(
+            self.engine, worker_count=3, analysis_runner=analysis_runner,
+        )
+
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["processed_count"], 3)
+        self.assertEqual(result["error_count"], 0)
+        self.assertEqual(maximum_active_count, 3)
+
+    def test_worker_count_must_be_between_one_and_five(self) -> None:
+        for worker_count in (0, 6):
+            with self.subTest(worker_count=worker_count):
+                with self.assertRaises(ValueError):
+                    run_product_description_relevance(self.engine, worker_count=worker_count)
+
 
 if __name__ == "__main__":
     unittest.main()

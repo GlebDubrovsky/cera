@@ -18,7 +18,7 @@ from modules.openai_api import chat_completion
 from shared.prompt_templates import load_prompt_template, render_prompt_template
 
 TABLE_NAME = "vilmed_description_products"
-PROMPT_TEMPLATE_NAME = "prmpt_for_product_vilmed_1.md"
+PROMPT_TEMPLATE_NAME = "prompt_for_product_vilmed_13k.md"
 MAX_ATTEMPTS_PER_PRODUCT = 3
 MAX_CONSECUTIVE_ERRORS = 5
 ITERATION_DELAY_SECONDS = 1.0
