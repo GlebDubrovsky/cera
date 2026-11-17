@@ -57,6 +57,13 @@
                             Открытие ссылок
                         </button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="check-urls-tab" data-bs-toggle="tab"
+                            data-bs-target="#check-urls-pane" type="button" role="tab"
+                            aria-controls="check-urls-pane" aria-selected="false">
+                            Проверка ссылок
+                        </button>
+                    </li>
                 </ul>
             </div>
 
@@ -134,6 +141,211 @@
                                     resultDiv.innerHTML = '<div class="alert alert-danger">Ошибка при открытии ссылок</div>';
                                 }
                             });
+                        </script>
+                    </div>
+
+                    <div class="tab-pane fade" id="check-urls-pane" role="tabpanel"
+                        aria-labelledby="check-urls-tab" tabindex="0">
+                        <h5 class="mb-3">Проверка HTTP-кодов ссылок</h5>
+                        <div class="alert alert-primary">
+                            Вставь ссылки по одной на строку или загрузи XLSX с колонкой <code>url</code>.
+                            Выбери только один источник. Для каждой ссылки будет показан итоговый HTTP-код;
+                            если сервер не ответил после повторов, в таблице появится <code>ERROR</code>.
+                        </div>
+                        <form id="url-status-checker-form" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label class="form-label" for="url-status-checker-text">Список ссылок</label>
+                                <textarea class="form-control" id="url-status-checker-text" name="urls_text"
+                                    rows="6" placeholder="https://example.com/page"></textarea>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label" for="url-status-checker-file">Или файл (.xlsx)</label>
+                                <input class="form-control" id="url-status-checker-file" name="file"
+                                    type="file" accept=".xlsx">
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label" for="url-check-timeout">Таймаут, секунд</label>
+                                    <input class="form-control" id="url-check-timeout" name="timeout_seconds"
+                                        type="number" min="0.1" step="0.1" value="10" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="url-check-attempts">Количество попыток</label>
+                                    <input class="form-control" id="url-check-attempts" name="attempts"
+                                        type="number" min="1" step="1" value="3" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label" for="url-check-pause">Пауза, секунд</label>
+                                    <input class="form-control" id="url-check-pause" name="pause_seconds"
+                                        type="number" min="0" step="0.1" value="1" required>
+                                </div>
+                            </div>
+                            <div class="d-flex gap-2 align-items-center">
+                                <button class="btn btn-primary" id="url-status-checker-submit" type="submit">
+                                    Проверить ссылки
+                                </button>
+                                <button class="btn btn-outline-danger" id="url-status-checker-stop" type="button" disabled>
+                                    Остановить
+                                </button>
+                                <span id="url-status-checker-state" class="badge text-bg-secondary">Ожидает запуска</span>
+                            </div>
+                        </form>
+                        <div class="progress mt-3" role="progressbar" aria-label="Прогресс проверки ссылок"
+                            aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="url-status-checker-progress-track">
+                            <div class="progress-bar" id="url-status-checker-progress" style="width: 0%"></div>
+                        </div>
+                        <div class="small text-muted mt-2" id="url-status-checker-message" aria-live="polite"></div>
+                        <div id="url-status-checker-result" class="mt-3" aria-live="polite"></div>
+                        <script>
+                            (() => {
+                                const form = document.getElementById('url-status-checker-form');
+                                const textInput = document.getElementById('url-status-checker-text');
+                                const fileInput = document.getElementById('url-status-checker-file');
+                                const submit = document.getElementById('url-status-checker-submit');
+                                const stop = document.getElementById('url-status-checker-stop');
+                                const state = document.getElementById('url-status-checker-state');
+                                const progress = document.getElementById('url-status-checker-progress');
+                                const progressTrack = document.getElementById('url-status-checker-progress-track');
+                                const message = document.getElementById('url-status-checker-message');
+                                const result = document.getElementById('url-status-checker-result');
+                                const getLogOutput = () => document.getElementById('live-log-output');
+                                const getLogStatus = () => document.getElementById('live-log-status');
+                                const activeStatuses = new Set(['queued', 'running', 'stopping']);
+                                const labels = {
+                                    idle: 'Ожидает запуска', queued: 'В очереди', running: 'Выполняется',
+                                    stopping: 'Остановка', stopped: 'Остановлено', completed: 'Завершено', failed: 'Ошибка'
+                                };
+                                let pollTimer = null;
+                                let logStream = null;
+                                let loadedResultId = null;
+
+                                const showError = (text) => {
+                                    const alert = document.createElement('div');
+                                    alert.className = 'alert alert-danger';
+                                    alert.textContent = text;
+                                    result.replaceChildren(alert);
+                                };
+
+                                const createLogId = () => {
+                                    const cryptoApi = window.crypto;
+                                    if (typeof cryptoApi?.randomUUID === 'function') return cryptoApi.randomUUID();
+                                    if (typeof cryptoApi?.getRandomValues !== 'function') {
+                                        throw new Error('Браузер не поддерживает генерацию идентификатора запуска.');
+                                    }
+                                    const bytes = cryptoApi.getRandomValues(new Uint8Array(16));
+                                    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+                                    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+                                    const hex = Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+                                    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+                                };
+
+                                const renderStatus = (data) => {
+                                    const active = activeStatuses.has(data.status);
+                                    const total = Number(data.candidate_count || data.total_count || 0);
+                                    const processed = Number(data.processed_count || 0);
+                                    const percent = total ? Math.min(100, Math.round(processed * 100 / total)) : 0;
+                                    submit.disabled = active;
+                                    stop.disabled = data.status !== 'running';
+                                    state.textContent = labels[data.status] || data.status;
+                                    state.className = `badge ${data.status === 'failed' ? 'text-bg-danger' : active ? 'text-bg-primary' : 'text-bg-secondary'}`;
+                                    progress.style.width = `${percent}%`;
+                                    progressTrack.setAttribute('aria-valuenow', String(percent));
+                                    message.textContent = `${data.message || ''} · ${processed}/${total}; ошибок: ${Number(data.error_count || 0)}`;
+                                };
+
+                                const loadResults = async (resultId) => {
+                                    if (!resultId || loadedResultId === resultId) return;
+                                    loadedResultId = resultId;
+                                    const response = await fetch(`/api/site-tools/url-status/results/${encodeURIComponent(resultId)}`);
+                                    if (!response.ok) throw new Error('Не удалось загрузить результат.');
+                                    result.innerHTML = await response.text();
+                                };
+
+                                const refreshStatus = async () => {
+                                    const response = await fetch('/api/site-tools/url-status/status');
+                                    if (!response.ok) throw new Error('Не удалось получить состояние задачи.');
+                                    const data = await response.json();
+                                    renderStatus(data);
+                                    if (!activeStatuses.has(data.status)) {
+                                        clearInterval(pollTimer);
+                                        pollTimer = null;
+                                        if (data.status === 'completed' || data.status === 'stopped') {
+                                            try { await loadResults(data.result_id); }
+                                            catch (error) { showError(error.message); }
+                                        } else if (data.status === 'failed') {
+                                            showError(data.message || 'Проверка завершилась с ошибкой.');
+                                        }
+                                    }
+                                };
+
+                                form.addEventListener('submit', async (event) => {
+                                    event.preventDefault();
+                                    if (Boolean(textInput.value.trim()) === (fileInput.files.length > 0)) {
+                                        showError('Укажи список ссылок или XLSX-файл, но не оба источника.');
+                                        return;
+                                    }
+
+                                    const logOutput = getLogOutput();
+                                    const logStatus = getLogStatus();
+                                    if (!logOutput || !logStatus) {
+                                        showError('Не найдена панель вывода журнала.');
+                                        return;
+                                    }
+                                    submit.disabled = true;
+                                    stop.disabled = true;
+                                    result.replaceChildren();
+                                    progress.style.width = '0%';
+                                    progressTrack.setAttribute('aria-valuenow', '0');
+                                    state.textContent = labels.queued;
+                                    state.className = 'badge text-bg-primary';
+                                    message.textContent = 'Запуск проверки…';
+                                    logOutput.textContent = '';
+
+                                    try {
+                                        const logId = createLogId();
+                                        if (logStream) logStream.close();
+                                        logStatus.textContent = 'подключение…';
+                                        logStream = new EventSource(`/logs/${logId}`);
+                                        logStream.onopen = () => { logStatus.textContent = 'выполняется'; };
+                                        logStream.onmessage = (event) => window.appendLiveLogChunk(logOutput, JSON.parse(event.data));
+                                        logStream.addEventListener('done', () => {
+                                            logStatus.textContent = 'завершено';
+                                            logStream.close();
+                                            logStream = null;
+                                        });
+                                        logStream.onerror = () => { logStatus.textContent = 'переподключение…'; };
+
+                                        const payload = new FormData(form);
+                                        payload.set('log_id', logId);
+                                        const response = await fetch('/api/site-tools/url-status/start', { method: 'POST', body: payload });
+                                        const data = await response.json();
+                                        if (!response.ok) throw new Error(data.detail || 'Не удалось запустить проверку.');
+                                        loadedResultId = null;
+                                        renderStatus(data);
+                                        if (pollTimer) clearInterval(pollTimer);
+                                        pollTimer = setInterval(() => refreshStatus().catch((error) => showError(error.message)), 1000);
+                                        await refreshStatus().catch((error) => showError(error.message));
+                                    } catch (error) {
+                                        if (logStream) { logStream.close(); logStream = null; }
+                                        logStatus.textContent = 'ошибка';
+                                        submit.disabled = false;
+                                        stop.disabled = true;
+                                        state.textContent = labels.failed;
+                                        state.className = 'badge text-bg-danger';
+                                        showError(error.message || 'Не удалось выполнить проверку ссылок.');
+                                    }
+                                });
+
+                                stop.addEventListener('click', async () => {
+                                    stop.disabled = true;
+                                    message.textContent = 'Передан запрос на остановку; текущая ссылка завершится первой.';
+                                    try {
+                                        await fetch('/api/site-tools/url-status/stop', { method: 'POST' });
+                                    } catch (error) {
+                                        showError('Не удалось отправить запрос на остановку.');
+                                    }
+                                });
+                            })();
                         </script>
                     </div>
 
@@ -1138,7 +1350,7 @@
             };
 
             window.addEventListener('pagehide', () => {
-                const pendingDownload = document.querySelector('a[href^="/download/xmlriver/"], a[href^="/download/relevance-analyzer/"], a[href^="/download/auto-landings/meta-tags-news/"]');
+                const pendingDownload = document.querySelector('a[href^="/download/xmlriver/"], a[href^="/download/relevance-analyzer/"], a[href^="/download/auto-landings/meta-tags-news/"], a[href^="/download/site-tools/url-status/"]');
                 if (pendingDownload) return;
                 navigator.sendBeacon('/cleanup_temp_files');
             });

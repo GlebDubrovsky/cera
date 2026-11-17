@@ -7,11 +7,13 @@
 from __future__ import annotations
 
 import contextvars
+import ipaddress
 import json
+import re
 import threading
 from concurrent.futures import CancelledError, ThreadPoolExecutor, as_completed
 from typing import Any, Callable, Mapping
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse, urlsplit, urlunsplit
 
 from sqlalchemy import Engine, text
 
@@ -46,6 +48,56 @@ def _parse_url_list(value: Any) -> list[str]:
     return urls
 
 
+def _quote_url_component(value: str, safe: str) -> str:
+    """Кодирует Unicode и пробелы, сохраняя уже корректные percent-escape."""
+    value = re.sub(r"%(?![0-9A-Fa-f]{2})", "%25", value)
+    return quote(value, safe=f"{safe}%", encoding="utf-8", errors="strict")
+
+
+def _normalize_http_url(value: str) -> str | None:
+    """Нормализует HTTP(S) URL, кодируя путь и параметры, но не хост как path."""
+    candidate = value.strip()
+    if not candidate or any(ord(character) < 32 for character in candidate):
+        return None
+    if candidate.startswith("//"):
+        candidate = f"https:{candidate}"
+    elif not re.match(r"^[A-Za-z][A-Za-z0-9+.-]*://", candidate):
+        candidate = f"https://{candidate}"
+
+    try:
+        parsed = urlsplit(candidate)
+        scheme = parsed.scheme.lower()
+        if scheme not in {"http", "https"} or not parsed.netloc:
+            return None
+        if parsed.username is not None or parsed.password is not None:
+            return None
+
+        hostname = parsed.hostname
+        if not hostname or any(character.isspace() for character in hostname):
+            return None
+        try:
+            address = ipaddress.ip_address(hostname)
+        except ValueError:
+            hostname = hostname.rstrip(".").encode("idna").decode("ascii").lower()
+            labels = hostname.split(".")
+            if any(
+                not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+                for label in labels
+            ):
+                return None
+        else:
+            hostname = f"[{address.compressed}]" if address.version == 6 else address.compressed
+
+        port = parsed.port
+        netloc = f"{hostname}:{port}" if port is not None else hostname
+        path = _quote_url_component(parsed.path, "/:@!$&'()*+,;=-._~")
+        query = _quote_url_component(parsed.query, "/?:@!$&'()*+,;=-._~")
+        fragment = _quote_url_component(parsed.fragment, "/?:@!$&'()*+,;=-._~")
+        return urlunsplit((scheme, netloc, path, query, fragment))
+    except (UnicodeError, ValueError):
+        return None
+
+
 def _host(value: str) -> str:
     parsed = urlparse(value)
     hostname = (parsed.hostname or urlparse(f"//{value}").hostname or "").lower().rstrip(".")
@@ -60,16 +112,26 @@ def _is_aggregator(url: str) -> bool:
     return any(hostname == domain or hostname.endswith(f".{domain}") for domain in _AGGREGATOR_HOSTS)
 
 
+def _url_identity(value: str) -> str:
+    """Создаёт ключ сравнения без завершающего слеша и URL-фрагмента."""
+    parsed = urlsplit(value)
+    return urlunsplit((parsed.scheme, parsed.netloc, parsed.path.rstrip("/"), parsed.query, ""))
+
+
 def _competitors(row: Mapping[str, Any], target_url: str) -> list[str]:
-    """Выбирает первую пригодную выдачу, исключая агрегаторы и дубликаты."""
-    target = target_url.strip().rstrip("/").lower()
+    """Нормализует ссылки и выбирает первую выдачу с пригодными конкурентами."""
+    normalized_target = _normalize_http_url(target_url)
+    target = _url_identity(normalized_target) if normalized_target else ""
     for field in ("comp_yandex", "comp_google"):
         cleaned, seen = [], set()
-        for url in _parse_url_list(row[field]):
-            normalized = url.rstrip("/").lower()
-            if not _is_aggregator(url) and normalized != target and normalized not in seen:
-                cleaned.append(url)
-                seen.add(normalized)
+        for raw_url in _parse_url_list(row[field]):
+            normalized_url = _normalize_http_url(raw_url)
+            if normalized_url is None or _is_aggregator(normalized_url):
+                continue
+            identity = _url_identity(normalized_url)
+            if identity != target and identity not in seen:
+                cleaned.append(normalized_url)
+                seen.add(identity)
         if cleaned:
             return cleaned
     return []
@@ -129,11 +191,12 @@ def run_product_description_relevance(
             return row_id, None, 0, None, True
         print(f"[VILMED_PRODUCT_DESC_RELEVANCE][PRODUCT][START] Товар {index}/{candidate_count}; row_id={row_id}.", flush=True)
         try:
-            target_url = row["url"].strip() if isinstance(row["url"], str) else ""
+            raw_target_url = row["url"] if isinstance(row["url"], str) else ""
+            target_url = _normalize_http_url(raw_target_url)
             keyword = row["keyword"].strip() if isinstance(row["keyword"], str) else ""
-            competitors = _competitors(row, target_url)
+            competitors = _competitors(row, target_url or "")
             if not target_url or not keyword or not competitors:
-                raise ValueError("Недостаточно URL или сайтов-конкурентов после фильтрации.")
+                raise ValueError("Недостаточно корректных URL или сайтов-конкурентов после фильтрации.")
             print(f"[VILMED_PRODUCT_DESC_RELEVANCE][ANALYSIS][START] Товар {index}/{candidate_count}; row_id={row_id}.", flush=True)
             result = analysis_runner({"link": target_url, "phrase": keyword, "sites": competitors, "list_words": RELEVANCE_EXCLUDED_WORDS})
             score, reach, density = _target_metrics(result)

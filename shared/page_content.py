@@ -34,8 +34,8 @@ class PageContent:
     content: str
 
 
-def _validate_public_url(value: object) -> str:
-    """Разрешает только публичные HTTP(S)-адреса, включая адреса после редиректа."""
+def validate_public_url(value: object) -> str:
+    """Проверяет HTTP(S)-адрес и запрещает обращения к внутренним IP-сетям."""
     if not isinstance(value, str) or not value.strip() or len(value) > 2048 or any(char.isspace() for char in value):
         raise PageInputError('Укажи корректный публичный URL страницы.')
     parsed = urlparse(value.strip())
@@ -83,7 +83,7 @@ def _request_html(url: str) -> str:
     """Выполняет загрузку с ручной проверкой каждого перехода и ограниченным телом."""
     current_url = url
     for redirect_index in range(MAX_REDIRECTS + 1):
-        current_url = _validate_public_url(current_url)
+        current_url = validate_public_url(current_url)
         try:
             with requests.get(
                 current_url,

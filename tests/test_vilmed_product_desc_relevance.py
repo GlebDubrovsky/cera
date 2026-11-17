@@ -9,7 +9,10 @@ from types import SimpleNamespace
 
 from sqlalchemy import create_engine, text
 
-from scenarios.vilmed_product_desc.vilmed_product_desc_relevance import run_product_description_relevance
+from scenarios.vilmed_product_desc.vilmed_product_desc_relevance import (
+    _normalize_http_url,
+    run_product_description_relevance,
+)
 
 
 class ProductDescriptionRelevanceTests(unittest.TestCase):
@@ -97,6 +100,59 @@ class ProductDescriptionRelevanceTests(unittest.TestCase):
                 },
             },
         )
+
+    def test_normalizes_unicode_and_spaces_without_double_encoding(self) -> None:
+        normalized = _normalize_http_url("https://пример.рф/товар с пробелом?поиск=да")
+
+        self.assertEqual(
+            normalized,
+            "https://xn--e1afmkfd.xn--p1ai/"
+            "%D1%82%D0%BE%D0%B2%D0%B0%D1%80%20%D1%81%20%D0%BF%D1%80%D0%BE%D0%B1%D0%B5%D0%BB%D0%BE%D0%BC"
+            "?%D0%BF%D0%BE%D0%B8%D1%81%D0%BA=%D0%B4%D0%B0",
+        )
+        self.assertEqual(
+            _normalize_http_url("https://example.test/a%20b"),
+            "https://example.test/a%20b",
+        )
+        self.assertIsNone(_normalize_http_url("https://bad host.test/path"))
+
+    def test_encodes_target_and_competitor_before_analysis(self) -> None:
+        self.add_product(
+            1,
+            url="https://vilmed.test/товар с пробелом",
+            yandex=json.dumps(["https://конкурент.рф/страница товара"]),
+        )
+        calls: list[dict[str, object]] = []
+
+        def analysis_runner(config: dict[str, object]) -> SimpleNamespace:
+            calls.append(config)
+            return self.analysis_result()
+
+        result = run_product_description_relevance(self.engine, analysis_runner=analysis_runner)
+
+        self.assertEqual(result["error_count"], 0)
+        self.assertEqual(calls[0]["link"], "https://vilmed.test/%D1%82%D0%BE%D0%B2%D0%B0%D1%80%20%D1%81%20%D0%BF%D1%80%D0%BE%D0%B1%D0%B5%D0%BB%D0%BE%D0%BC")
+        self.assertEqual(
+            calls[0]["sites"],
+            ["https://xn--e1ajalccqsf.xn--p1ai/%D1%81%D1%82%D1%80%D0%B0%D0%BD%D0%B8%D1%86%D0%B0%20%D1%82%D0%BE%D0%B2%D0%B0%D1%80%D0%B0"],
+        )
+
+    def test_discards_invalid_yandex_url_and_falls_back_to_google(self) -> None:
+        self.add_product(
+            1,
+            yandex=json.dumps(["https://bad host.test/page"]),
+            google='["https://google-competitor.test/page"]',
+        )
+        calls: list[dict[str, object]] = []
+
+        def analysis_runner(config: dict[str, object]) -> SimpleNamespace:
+            calls.append(config)
+            return self.analysis_result()
+
+        result = run_product_description_relevance(self.engine, analysis_runner=analysis_runner)
+
+        self.assertEqual(result["error_count"], 0)
+        self.assertEqual(calls[0]["sites"], ["https://google-competitor.test/page"])
 
     def test_uses_yandex_urls_filters_aggregators_and_saves_analysis(self) -> None:
         self.add_product(
